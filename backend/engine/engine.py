@@ -237,8 +237,15 @@ class Engine:
             _schedule_pending_phases(job, now)
 
             etype = EventType.JOB_RESUMED if is_resume else EventType.JOB_STARTED
-            emit(now, etype, {"job_id": job.id, "node_id": node_id,
-                              "remaining": rt.remaining})
+            emit(now, etype, {
+                "job_id": job.id,
+                "node_id": node_id,
+                "remaining": rt.remaining,
+                "cpu": job.cpu,
+                "mem": job.mem,
+                "role": job.role.value,
+                "user_id": job.user_id,
+            })
 
         def _schedule_pending_phases(job: Job, now: int) -> None:
             rt = job.runtime
@@ -285,8 +292,15 @@ class Engine:
             if profile.scheduler == SchedulerKind.RR:
                 sched.rr_enqueue(job.id, at_tail=True)
 
-            emit(now, EventType.JOB_PREEMPTED,
-                 {"job_id": job.id, "reason": reason, "remaining": rt.remaining})
+            emit(now, EventType.JOB_PREEMPTED, {
+                "job_id": job.id,
+                "node_id": nid,
+                "reason": reason,
+                "remaining": rt.remaining,
+                "cpu": job.cpu,
+                "mem": job.mem,
+                "role": job.role.value,
+            })
 
         def _kill_job(job: Job, now: int, reason: str) -> None:
             nonlocal restarts
@@ -629,8 +643,16 @@ class Engine:
             if etype == EventType.JOB_ARRIVED.value:
                 if job:
                     eligible_set.add(job_id)
-                    emit(now, EventType.JOB_ARRIVED,
-                         {"job_id": job_id, "role": job.role.value})
+                    emit(now, EventType.JOB_ARRIVED, {
+                        "job_id": job_id,
+                        "role": job.role.value,
+                        "kind": job.kind.value,
+                        "user_id": job.user_id,
+                        "cpu": job.cpu,
+                        "mem": job.mem,
+                        "burst": job.burst,
+                        "pooled": job.runtime.pooled_alloc.model_dump() if (job.runtime and job.runtime.pooled_alloc) else {"gpu": 0, "lic": 0, "io": 0},
+                    })
                     if profile.scheduler == SchedulerKind.RR:
                         sched.rr_enqueue(job_id, at_tail=True)
                     banker.register(job)
@@ -667,6 +689,9 @@ class Engine:
                         "turnaround": now - job.arrival,
                         "wait": (rt.first_start - job.arrival) if rt and rt.first_start else 0,
                         "deadline_missed": job.missed_deadline(),
+                        "cpu": job.cpu,
+                        "mem": job.mem,
+                        "role": job.role.value,
                     })
                     _retry_blocked(now)
 

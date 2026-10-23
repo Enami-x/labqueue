@@ -34,11 +34,13 @@ export class ReplayEngine {
   private cluster: ClusterModel;
   private events: SimEvent[];
   private maxTime: number;
+  private defaultProfileName: string;
 
-  constructor(cluster: ClusterModel, events: SimEvent[]) {
+  constructor(cluster: ClusterModel, events: SimEvent[], defaultProfileName: string = 'practical_session') {
     this.cluster = cluster || { nodes: [], pooled: { gpu: 0, lic: 0, io: 0 } };
     this.events = Array.isArray(events) ? [...events].sort((a, b) => (a.seq || 0) - (b.seq || 0)) : [];
     this.maxTime = this.events.length > 0 ? this.events[this.events.length - 1].t : 100;
+    this.defaultProfileName = defaultProfileName;
   }
 
   public getMaxTime(): number {
@@ -75,31 +77,41 @@ export class ReplayEngine {
     const preemptedJobs: string[] = [];
     const deadlockedJobs: string[] = [];
 
-    let activeProfileName = 'default';
+    let activeProfileName = this.defaultProfileName;
     let bankerSafe = true;
 
     // Filter events up to targetTime
     const pastEvents = this.events.filter((e) => e.t <= t);
 
     for (const evt of pastEvents) {
-      const jid = evt.job_id || evt.details?.job_id || evt.job?.id;
+      const jid = (evt as any).job_id || evt.details?.job_id || (evt as any).job?.id;
 
       switch (evt.type) {
         case 'JOB_SUBMITTED':
-        case 'JOB_ARRIVAL': {
+        case 'JOB_ARRIVAL':
+        case 'JOB_ARRIVED': {
           const details = evt.details || {};
+          const anyEvt = evt as any;
+          const jRole = anyEvt.role ?? details.role ?? 'ug';
+          const jKind = anyEvt.kind ?? details.kind ?? 'assignment';
+          const jCpu = anyEvt.cpu ?? details.cpu ?? 1;
+          const jMem = anyEvt.mem ?? details.mem ?? 2;
+          const jBurst = anyEvt.burst ?? anyEvt.duration ?? details.burst ?? details.duration ?? 5;
+          const jUser = anyEvt.user_id ?? details.user_id ?? 'u0';
+          const jPooled = anyEvt.pooled ?? details.pooled ?? { gpu: 0, lic: 0, io: 0 };
+
           jobsMap[jid] = {
             id: jid,
-            user_id: details.user_id || 'u0',
-            role: details.role || 'ug',
-            kind: details.kind || 'assignment',
-            cpu: details.cpu || 1,
-            mem: details.mem || 2,
-            burst: details.duration || details.burst || 5,
+            user_id: jUser,
+            role: jRole,
+            kind: jKind,
+            cpu: jCpu,
+            mem: jMem,
+            burst: jBurst,
             arrival: evt.t,
             state: 'queued',
             node_id: null,
-            pooled: details.pooled || { gpu: 0, lic: 0, io: 0 },
+            pooled: jPooled,
           };
           if (!readyQueue.includes(jid)) {
             readyQueue.push(jid);
@@ -108,18 +120,20 @@ export class ReplayEngine {
         }
 
         case 'JOB_DISPATCHED':
-        case 'JOB_STARTED': {
-          const nid = evt.details?.node_id ?? evt.node_id;
+        case 'JOB_STARTED':
+        case 'JOB_RESUMED': {
+          const anyEvt = evt as any;
+          const nid = anyEvt.node_id ?? evt.details?.node_id;
           const node = nodeStateMap.get(nid);
           const job = jobsMap[jid];
 
-          const cpuAlloc = evt.details?.cpu ?? job?.cpu ?? 1;
-          const memAlloc = evt.details?.mem ?? job?.mem ?? 1;
+          const cpuAlloc = anyEvt.cpu ?? evt.details?.cpu ?? job?.cpu ?? 2;
+          const memAlloc = anyEvt.mem ?? evt.details?.mem ?? job?.mem ?? 4;
 
           if (node) {
-            node.cpu_allocated += cpuAlloc;
+            node.cpu_allocated = Math.min(node.cpu_total, node.cpu_allocated + cpuAlloc);
             node.cpu_available = Math.max(0, node.cpu_total - node.cpu_allocated);
-            node.mem_allocated += memAlloc;
+            node.mem_allocated = Math.min(node.mem_total, node.mem_allocated + memAlloc);
             node.mem_available = Math.max(0, node.mem_total - node.mem_allocated);
             if (!node.running_job_ids.includes(jid)) {
               node.running_job_ids.push(jid);
@@ -141,14 +155,18 @@ export class ReplayEngine {
         }
 
         case 'JOB_PREEMPTED': {
-          const nid = evt.details?.node_id ?? jobsMap[jid]?.node_id;
+          const anyEvt = evt as any;
+          const nid = anyEvt.node_id ?? evt.details?.node_id ?? jobsMap[jid]?.node_id;
           const node = nodeStateMap.get(nid);
           const job = jobsMap[jid];
 
-          if (node && job) {
-            node.cpu_allocated = Math.max(0, node.cpu_allocated - job.cpu);
+          const cpuFree = anyEvt.cpu ?? evt.details?.cpu ?? job?.cpu ?? 2;
+          const memFree = anyEvt.mem ?? evt.details?.mem ?? job?.mem ?? 4;
+
+          if (node) {
+            node.cpu_allocated = Math.max(0, node.cpu_allocated - cpuFree);
             node.cpu_available = Math.min(node.cpu_total, node.cpu_total - node.cpu_allocated);
-            node.mem_allocated = Math.max(0, node.mem_allocated - job.mem);
+            node.mem_allocated = Math.max(0, node.mem_allocated - memFree);
             node.mem_available = Math.min(node.mem_total, node.mem_total - node.mem_allocated);
             node.running_job_ids = node.running_job_ids.filter((id: string) => id !== jid);
           }
@@ -167,14 +185,18 @@ export class ReplayEngine {
 
         case 'JOB_COMPLETED':
         case 'JOB_FINISHED': {
-          const nid = evt.details?.node_id ?? jobsMap[jid]?.node_id;
+          const anyEvt = evt as any;
+          const nid = anyEvt.node_id ?? evt.details?.node_id ?? jobsMap[jid]?.node_id;
           const node = nodeStateMap.get(nid);
           const job = jobsMap[jid];
 
-          if (node && job) {
-            node.cpu_allocated = Math.max(0, node.cpu_allocated - job.cpu);
+          const cpuFree = anyEvt.cpu ?? evt.details?.cpu ?? job?.cpu ?? 2;
+          const memFree = anyEvt.mem ?? evt.details?.mem ?? job?.mem ?? 4;
+
+          if (node) {
+            node.cpu_allocated = Math.max(0, node.cpu_allocated - cpuFree);
             node.cpu_available = Math.min(node.cpu_total, node.cpu_total - node.cpu_allocated);
-            node.mem_allocated = Math.max(0, node.mem_allocated - job.mem);
+            node.mem_allocated = Math.max(0, node.mem_allocated - memFree);
             node.mem_available = Math.min(node.mem_total, node.mem_total - node.mem_allocated);
             node.running_job_ids = node.running_job_ids.filter((id: string) => id !== jid);
           }
@@ -195,14 +217,18 @@ export class ReplayEngine {
 
         case 'JOB_FAILED':
         case 'JOB_KILLED': {
-          const nid = evt.details?.node_id ?? jobsMap[jid]?.node_id;
+          const anyEvt = evt as any;
+          const nid = anyEvt.node_id ?? evt.details?.node_id ?? jobsMap[jid]?.node_id;
           const node = nodeStateMap.get(nid);
           const job = jobsMap[jid];
 
-          if (node && job) {
-            node.cpu_allocated = Math.max(0, node.cpu_allocated - job.cpu);
+          const cpuFree = anyEvt.cpu ?? evt.details?.cpu ?? job?.cpu ?? 2;
+          const memFree = anyEvt.mem ?? evt.details?.mem ?? job?.mem ?? 4;
+
+          if (node) {
+            node.cpu_allocated = Math.max(0, node.cpu_allocated - cpuFree);
             node.cpu_available = Math.min(node.cpu_total, node.cpu_total - node.cpu_allocated);
-            node.mem_allocated = Math.max(0, node.mem_allocated - job.mem);
+            node.mem_allocated = Math.max(0, node.mem_allocated - memFree);
             node.mem_available = Math.min(node.mem_total, node.mem_total - node.mem_allocated);
             node.running_job_ids = node.running_job_ids.filter((id: string) => id !== jid);
           }
@@ -220,7 +246,8 @@ export class ReplayEngine {
         }
 
         case 'PHASE_GRANTED': {
-          const req = evt.details?.request || evt.request || {};
+          const anyEvt = evt as any;
+          const req = anyEvt.request ?? evt.details?.request ?? {};
           allocPooled.gpu += req.gpu || 0;
           allocPooled.lic += req.lic || 0;
           allocPooled.io += req.io || 0;
@@ -228,7 +255,8 @@ export class ReplayEngine {
         }
 
         case 'PHASE_RELEASED': {
-          const rel = evt.details?.released || evt.released || {};
+          const anyEvt = evt as any;
+          const rel = anyEvt.released ?? evt.details?.released ?? {};
           allocPooled.gpu = Math.max(0, allocPooled.gpu - (rel.gpu || 0));
           allocPooled.lic = Math.max(0, allocPooled.lic - (rel.lic || 0));
           allocPooled.io = Math.max(0, allocPooled.io - (rel.io || 0));

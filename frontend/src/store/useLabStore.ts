@@ -221,16 +221,17 @@ export const useLabStore = create<LabState>((set, get) => {
 
         if (cluster && result) {
           const events = Array.isArray(result.events) ? result.events : [];
-          const engine = new ReplayEngine(cluster, events);
+          const engine = new ReplayEngine(cluster, events, pName);
           const maxT = engine.getMaxTime();
-          const stateAt0 = engine.getStateAt(0);
+          const initialT = Math.min(12, maxT);
+          const initialState = engine.getStateAt(initialT);
 
           set({
             runResult: result,
             replayEngine: engine,
             maxScrubberTime: maxT,
-            scrubberTime: 0,
-            replayState: stateAt0,
+            scrubberTime: initialT,
+            replayState: initialState,
             isPlaying: false,
           });
         }
