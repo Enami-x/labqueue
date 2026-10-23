@@ -1,112 +1,144 @@
 import React, { useState } from 'react';
 import { useLabStore } from '../store/useLabStore';
-import { Radio } from 'lucide-react';
+import { Activity, Search } from 'lucide-react';
 
 export const EventFeed: React.FC = () => {
-  const { replayState } = useLabStore();
-  const [filterType, setFilterType] = useState<string>('all');
+  const { replayState, liveState, mode, setSelectedJobId } = useLabStore();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
 
-  const events = replayState?.recent_events || [];
+  const rawEvents = replayState?.recent_events || [];
 
-  const filtered = events.filter((e) => {
-    if (filterType === 'all') return true;
-    if (filterType === 'deadlock') return e.type.includes('DEADLOCK') || e.type.includes('BANKER');
-    if (filterType === 'preempt') return e.type.includes('PREEMPT');
-    if (filterType === 'dispatch') return e.type.includes('DISPATCH') || e.type.includes('STARTED');
-    return true;
-  });
-
-  const getEventBadge = (type: string) => {
-    if (type.includes('DEADLOCK')) {
-      return 'bg-rose-500/15 text-rose-300 border-rose-500/30 font-semibold';
-    }
-    if (type.includes('PREEMPT')) {
-      return 'bg-amber-500/15 text-amber-300 border-amber-500/30 font-semibold';
-    }
-    if (type.includes('COMPLETED') || type.includes('FINISHED')) {
-      return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25';
-    }
-    if (type.includes('DISPATCH') || type.includes('STARTED')) {
-      return 'bg-sky-500/15 text-sky-300 border-sky-500/25';
-    }
-    if (type.includes('SWITCH')) {
-      return 'bg-purple-500/15 text-purple-300 border-purple-500/25';
-    }
-    return 'bg-white/[0.04] text-slate-400 border-white/[0.06]';
+  const formatTime = (t: number) => {
+    const mins = Math.floor(t / 60);
+    const secs = Math.floor(t % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  return (
-    <div className="plume-card rounded-2xl p-5 flex flex-col h-[340px]">
-      <div className="flex items-center justify-between pb-3 border-b border-white/[0.08] mb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20">
-            <Radio className="w-4 h-4" />
-          </div>
-          <div>
-            <h2 className="text-sm font-semibold text-white tracking-tight">
-              Discrete Event Log Stream
-            </h2>
-            <p className="text-xs text-slate-400">
-              Deterministic state transition audit
-            </p>
-          </div>
-        </div>
+  const getTone = (type: string) => {
+    switch (type) {
+      case 'JOB_STARTED':
+      case 'JOB_RESUMED':
+        return 'blue';
+      case 'JOB_ARRIVED':
+      case 'JOB_SUBMITTED':
+        return 'violet';
+      case 'PHASE_GRANTED':
+      case 'JOB_FINISHED':
+      case 'JOB_COMPLETED':
+        return 'green';
+      case 'BANKER_DENIED':
+      case 'DEADLOCK_DETECTED':
+        return 'orange';
+      case 'NODE_FAILED':
+      case 'JOB_PREEMPTED':
+      case 'JOB_KILLED':
+        return 'red';
+      default:
+        return 'blue';
+    }
+  };
 
-        {/* Filter buttons */}
-        <div className="flex items-center gap-1 text-xs">
-          {['all', 'dispatch', 'preempt', 'deadlock'].map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilterType(f)}
-              className={`px-2.5 py-1 rounded-lg capitalize transition ${
-                filterType === f
-                  ? 'bg-white/[0.12] text-white border border-white/[0.1] font-semibold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
-              }`}
-            >
-              {f}
-            </button>
-          ))}
+  const formatDetail = (ev: any) => {
+    const jid = ev.job_id || ev.details?.job_id;
+    switch (ev.type) {
+      case 'JOB_ARRIVED':
+        return `${jid} entered ready queue (${ev.role || 'assignment'})`;
+      case 'JOB_STARTED':
+      case 'JOB_RESUMED':
+        return `${jid} dispatched to node ${ev.node_id ?? ev.details?.node_id ?? 0}`;
+      case 'JOB_FINISHED':
+        return `${jid} completed · turnaround ${ev.turnaround ?? 0}s`;
+      case 'JOB_PREEMPTED':
+        return `${jid} preempted: ${ev.reason || 'quantum expired'}`;
+      case 'PHASE_GRANTED':
+        return `${jid} acquired pooled resources`;
+      case 'PHASE_RELEASED':
+        return `${jid} released pooled resources`;
+      case 'DEADLOCK_DETECTED':
+        return `Victim ${ev.victim || ev.details?.victim || jid} flagged for recovery`;
+      case 'NODE_FAILED':
+        return `Node ${ev.node_id ?? ev.details?.node_id} experienced hardware outage`;
+      default:
+        return JSON.stringify(ev.details || {});
+    }
+  };
+
+  const filteredEvents = rawEvents.filter((ev: any) => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    const type = (ev.type || '').toLowerCase();
+    const jid = (ev.job_id || ev.details?.job_id || '').toLowerCase();
+    return type.includes(term) || jid.includes(term);
+  });
+
+  return (
+    <section className="panel event-panel">
+      <div className="section-heading">
+        <div>
+          <span className="section-kicker">System activity</span>
+          <h2>Event feed</h2>
+        </div>
+        <div className="feed-actions">
+          <span className="live-status">
+            <span className="status-dot" />
+            Streaming
+          </span>
+          <button
+            className="ghost-button"
+            onClick={() => setShowSearch(!showSearch)}
+          >
+            <Search /> Search
+          </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-1.5 text-xs pr-1">
-        {filtered.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-slate-500 text-xs italic">
-            No events match current filter.
-          </div>
-        ) : (
-          filtered.map((e, idx) => (
-            <div
-              key={`${e.seq || idx}-${e.t}`}
-              className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] transition"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-[11px] font-mono text-slate-400 w-14">
-                  T={e.t.toFixed(1)}m
-                </span>
-                <span
-                  className={`px-2 py-0.5 text-[10px] font-medium rounded-full border ${getEventBadge(
-                    e.type
-                  )}`}
-                >
-                  {e.type}
-                </span>
-                {e.job_id && (
-                  <span className="text-white font-mono font-semibold">{e.job_id}</span>
-                )}
-              </div>
+      {showSearch && (
+        <div className="px-5 pb-3">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Filter events by type or job ID..."
+            className="w-full px-3 py-1.5 rounded-lg bg-black/20 border border-[rgba(220,237,227,0.12)] text-xs text-[#f5f4ed] focus:outline-none focus:border-[#b6f3cf]"
+          />
+        </div>
+      )}
 
-              <div className="text-xs text-slate-400 truncate max-w-[240px]">
-                {e.details?.node_name && `Node: ${e.details.node_name}`}
-                {e.details?.new_profile && `→ ${e.details.new_profile}`}
-                {e.details?.victim && `Victim: ${e.details.victim}`}
-                {e.details?.reason && `${e.details.reason}`}
+      <div className="events">
+        {filteredEvents.length > 0 ? (
+          filteredEvents.map((ev: any, idx: number) => {
+            const timeStr = formatTime(ev.t ?? 0);
+            const tone = getTone(ev.type);
+            const detailStr = formatDetail(ev);
+            const jid = ev.job_id || ev.details?.job_id;
+
+            return (
+              <div
+                className="event-row cursor-pointer hover:bg-white/[0.02] transition"
+                key={idx}
+                onClick={() => {
+                  if (jid) setSelectedJobId(jid);
+                }}
+              >
+                <span className="event-time">{timeStr}</span>
+                <span className={`event-icon ${tone}`}>
+                  <Activity />
+                </span>
+                <span className="event-copy">
+                  <b>{ev.type}</b>
+                  <span>{detailStr}</span>
+                </span>
+                <span className="event-arrow">↗</span>
               </div>
-            </div>
-          ))
+            );
+          })
+        ) : (
+          <div className="py-8 text-center text-xs text-[#6e8c82] italic">
+            No events recorded yet for this window
+          </div>
         )}
       </div>
-    </div>
+    </section>
   );
 };

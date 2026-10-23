@@ -1,10 +1,18 @@
 import React from 'react';
 import { useLabStore } from '../store/useLabStore';
+import { Settings2, PowerOff, RotateCcw } from 'lucide-react';
 import { api } from '../services/api';
-import { Server, PowerOff, RotateCcw } from 'lucide-react';
+
+function Progress({ value, color = 'mint' }: { value: number; color?: string }) {
+  return (
+    <div className="progress-track">
+      <div className={`progress-fill ${color}`} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+    </div>
+  );
+}
 
 export const NodeGrid: React.FC = () => {
-  const { replayState, liveState, mode, setSelectedJobId } = useLabStore();
+  const { replayState, liveState, mode, setSelectedJobId, setTab } = useLabStore();
 
   const nodes =
     mode === 'live'
@@ -23,49 +31,27 @@ export const NodeGrid: React.FC = () => {
     }
   };
 
-  const getRoleBadge = (role?: string) => {
-    switch (role) {
-      case 'faculty':
-        return 'bg-purple-500/15 text-purple-300 border-purple-500/25';
-      case 'phd':
-        return 'bg-indigo-500/15 text-indigo-300 border-indigo-500/25';
-      case 'exam':
-        return 'bg-rose-500/15 text-rose-300 border-rose-500/25';
-      case 'demo':
-        return 'bg-amber-500/15 text-amber-300 border-amber-500/25';
-      case 'ug':
-      default:
-        return 'bg-sky-500/15 text-sky-300 border-sky-500/25';
-    }
-  };
+  const onlineCount = nodes.filter((n: any) => (mode === 'live' ? n.is_up : n.up)).length;
 
   return (
-    <div className="plume-card rounded-2xl p-5 flex flex-col">
-      <div className="flex items-center justify-between pb-3 border-b border-white/[0.08] mb-4">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20">
-            <Server className="w-4 h-4" />
-          </div>
-          <div>
-            <h2 className="text-sm font-semibold text-white tracking-tight">
-              Cluster Compute Nodes
-            </h2>
-            <p className="text-xs text-slate-400">
-              {nodes.length} nodes registered • Heterogeneous core & memory topologies
-            </p>
-          </div>
+    <section className="panel nodes-panel">
+      <div className="section-heading">
+        <div>
+          <span className="section-kicker">Cluster topology</span>
+          <h2>Node matrix</h2>
         </div>
-        <div className="flex items-center gap-3 text-xs font-medium text-slate-400">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" /> Online
+        <div className="heading-actions">
+          <span className="live-status">
+            <span className="status-dot" />
+            {onlineCount} online
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-rose-400" /> Outage
-          </span>
+          <button className="ghost-button" onClick={() => setTab('profiles')}>
+            <Settings2 /> Manage
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
+      <div className="nodes-grid">
         {nodes.map((node: any) => {
           const isUp = mode === 'live' ? node.is_up : node.up;
           const isLarge = (node.cpu_total ?? node.cpu ?? 0) >= 16;
@@ -76,124 +62,65 @@ export const NodeGrid: React.FC = () => {
 
           const cpuPct = Math.round((cpuAllocated / Math.max(1, cpuTotal)) * 100);
           const memPct = Math.round((memAllocated / Math.max(1, memTotal)) * 100);
+          const kindLabel = isLarge ? 'GPU · 32 vCPU' : `${cpuTotal} vCPU · ${memTotal} GB`;
+
+          const runningJobs = node.running_job_ids || [];
 
           return (
-            <div
-              key={node.id}
-              className={`flex flex-col p-3.5 rounded-2xl border transition-all duration-200 ${
-                !isUp
-                  ? 'bg-rose-500/[0.04] border-rose-500/25 opacity-75'
-                  : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.08] hover:border-white/[0.15]'
-              }`}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.06]">
+            <article className="node-card" key={node.id}>
+              <div className="node-top">
+                <div>
+                  <h3>{node.name}</h3>
+                  <span>{kindLabel}</span>
+                </div>
                 <div className="flex items-center gap-2">
-                  <span
-                    className={`w-2 h-2 rounded-full ${
-                      isUp ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-rose-400 animate-pulse'
-                    }`}
-                  />
-                  <span className="font-mono font-semibold text-xs text-white">
-                    {node.name}
+                  <span className={`node-status ${isUp ? '' : 'outage'}`}>
+                    <span />
+                    {isUp ? 'Online' : 'Outage'}
                   </span>
-                  {isLarge && (
-                    <span className="px-1.5 py-0.5 text-[9px] font-medium uppercase rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25">
-                      Large
-                    </span>
+                  {mode === 'live' && (
+                    <button
+                      onClick={() => handleFailToggle(node.id, isUp)}
+                      className="p-1 rounded bg-white/5 hover:bg-white/10 text-xs transition"
+                      title={isUp ? 'Simulate Outage' : 'Restore Node'}
+                    >
+                      {isUp ? <PowerOff className="w-2.5 h-2.5 text-rose-400" /> : <RotateCcw className="w-2.5 h-2.5 text-emerald-400" />}
+                    </button>
                   )}
                 </div>
-
-                {/* Live fail/restore trigger button */}
-                {mode === 'live' && (
-                  <button
-                    onClick={() => handleFailToggle(node.id, isUp)}
-                    title={isUp ? 'Simulate Node Outage' : 'Restore Node'}
-                    className={`p-1.5 rounded-lg text-xs transition ${
-                      isUp
-                        ? 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25'
-                        : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
-                    }`}
-                  >
-                    {isUp ? <PowerOff className="w-3 h-3" /> : <RotateCcw className="w-3 h-3" />}
-                  </button>
-                )}
               </div>
 
-              {/* Resource Bars */}
-              <div className="space-y-2 text-xs">
-                {/* CPU Bar */}
+              <div className="resource">
                 <div>
-                  <div className="flex justify-between text-slate-400 mb-1 text-[11px]">
-                    <span>CPU: {cpuAllocated}/{cpuTotal}</span>
-                    <span className={cpuPct > 90 ? 'text-rose-400 font-bold' : 'text-slate-300'}>
-                      {cpuPct}%
-                    </span>
-                  </div>
-                  <div className="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ${
-                        !isUp
-                          ? 'bg-rose-500'
-                          : cpuPct > 90
-                          ? 'bg-rose-500'
-                          : cpuPct > 65
-                          ? 'bg-amber-400'
-                          : 'bg-sky-400'
-                      }`}
-                      style={{ width: `${Math.min(100, isUp ? cpuPct : 0)}%` }}
-                    />
-                  </div>
+                  <span>CPU ({cpuAllocated}/{cpuTotal})</span>
+                  <b>{cpuPct}%</b>
                 </div>
-
-                {/* RAM Bar */}
-                <div>
-                  <div className="flex justify-between text-slate-400 mb-1 text-[11px]">
-                    <span>RAM: {memAllocated}/{memTotal} GB</span>
-                    <span className={memPct > 90 ? 'text-rose-400 font-bold' : 'text-slate-300'}>
-                      {memPct}%
-                    </span>
-                  </div>
-                  <div className="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ${
-                        !isUp
-                          ? 'bg-rose-500'
-                          : memPct > 90
-                          ? 'bg-rose-500'
-                          : 'bg-indigo-400'
-                      }`}
-                      style={{ width: `${Math.min(100, isUp ? memPct : 0)}%` }}
-                    />
-                  </div>
-                </div>
+                <Progress value={isUp ? cpuPct : 0} color={!isUp ? 'orange' : cpuPct > 85 ? 'orange' : 'mint'} />
               </div>
 
-              {/* Running Jobs Pills */}
-              <div className="mt-3 pt-2 border-t border-white/[0.06] flex flex-wrap gap-1 items-center min-h-[26px]">
-                {node.running_job_ids && node.running_job_ids.length > 0 ? (
-                  node.running_job_ids.map((jid: string) => {
-                    const job = replayState?.jobs?.[jid];
-                    return (
-                      <button
-                        key={jid}
-                        onClick={() => setSelectedJobId(jid)}
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono border transition ${getRoleBadge(
-                          job?.role
-                        )} hover:scale-105`}
-                      >
-                        {jid}
-                      </button>
-                    );
-                  })
+              <div className="resource">
+                <div>
+                  <span>RAM ({memAllocated}/{memTotal} GB)</span>
+                  <b>{memPct}%</b>
+                </div>
+                <Progress value={isUp ? memPct : 0} color={!isUp ? 'orange' : 'lavender'} />
+              </div>
+
+              <div className="job-tags">
+                {runningJobs.length > 0 ? (
+                  runningJobs.map((jid: string) => (
+                    <button key={jid} onClick={() => setSelectedJobId(jid)}>
+                      {jid}
+                    </button>
+                  ))
                 ) : (
-                  <span className="text-[10px] text-slate-500 italic">Idle</span>
+                  <span className="text-[10px] text-[#69837b] italic py-0.5">Idle</span>
                 )}
               </div>
-            </div>
+            </article>
           );
         })}
       </div>
-    </div>
+    </section>
   );
 };

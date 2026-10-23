@@ -30,34 +30,34 @@ export class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-cr-bg cr-grid-bg flex items-center justify-center p-6 text-slate-100">
-          <div className="max-w-lg w-full bg-cr-surface border border-cr-rose/40 rounded-2xl p-6 shadow-2xl cr-glow-rose space-y-4">
+        <div className="min-h-screen bg-[#031f1b] flex items-center justify-center p-6 text-[#f5f4ed]">
+          <div className="max-w-lg w-full bg-[#062b25] border border-[#ffb682]/40 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-cr-rose/20 text-cr-rose border border-cr-rose/40">
+              <div className="p-3 rounded-xl bg-[#ffb682]/15 text-[#ffb682] border border-[#ffb682]/30">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
-                <h2 className="text-base font-bold font-mono uppercase text-white">
-                  Application Render Notice
+                <h2 className="text-base font-bold uppercase tracking-tight text-white">
+                  Application Notice
                 </h2>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-[#99aaa5]">
                   An error occurred while mounting dashboard telemetry.
                 </p>
               </div>
             </div>
 
             {this.state.error && (
-              <pre className="bg-cr-card p-3 rounded-xl border border-cr-border text-xs font-mono text-cr-rose overflow-x-auto whitespace-pre-wrap">
+              <pre className="bg-black/30 p-3 rounded-xl border border-[rgba(220,237,227,0.12)] text-xs font-mono text-[#ffb682] overflow-x-auto whitespace-pre-wrap">
                 {this.state.error.toString()}
               </pre>
             )}
 
             <button
               onClick={() => window.location.reload()}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-cr-cyan/20 hover:bg-cr-cyan/30 text-cr-cyan border border-cr-cyan/40 rounded-xl font-mono text-xs font-bold transition cr-glow-cyan"
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#b6f3cf] hover:brightness-110 text-[#031f1b] rounded-xl font-bold text-xs transition"
             >
               <RefreshCw className="w-4 h-4" />
-              <span>Reload Control Room</span>
+              <span>Reload Mission Control</span>
             </button>
           </div>
         </div>

@@ -19,20 +19,20 @@ export const App: React.FC = () => {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col plume-ambient text-slate-100 font-sans">
-      {/* Top Floating Navigation Bar */}
+    <div className="lab-app flex flex-col text-[#f5f4ed]">
+      {/* Top Floating Pill Navigation */}
       <Navbar />
 
-      {/* Global Error Banner if any */}
+      {/* Global Error Notice if any */}
       {error && (
-        <div className="mx-4 mb-3 p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-between text-xs text-rose-300">
+        <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-4 p-3.5 rounded-xl bg-[#ffb682]/10 border border-[#ffb682]/30 flex items-center justify-between text-xs text-[#ffb682]">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-400" />
+            <AlertTriangle className="w-4 h-4 text-[#ffb682]" />
             <span>{error}</span>
           </div>
           <button
             onClick={() => initApp()}
-            className="underline hover:text-white transition font-medium"
+            className="underline hover:text-white transition font-medium cursor-pointer"
           >
             Retry Connection
           </button>
@@ -40,22 +40,50 @@ export const App: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col overflow-hidden relative">
+      <main className="flex-1 flex flex-col relative">
         {loading && (
-          <div className="absolute top-2 right-6 z-50 flex items-center gap-2 bg-slate-900/80 backdrop-blur-md border border-white/[0.1] px-3.5 py-1.5 rounded-full text-xs font-medium text-sky-300 shadow-xl">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
+          <div className="fixed top-5 right-8 z-50 flex items-center gap-2 bg-[#062b25]/90 backdrop-blur-md border border-[rgba(220,237,227,0.2)] px-4 py-1.5 rounded-full text-xs font-semibold text-[#b6f3cf] shadow-2xl">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#b6f3cf]" />
             <span>Simulating...</span>
           </div>
         )}
 
         {currentTab === 'overview' && <OverviewPage />}
-        {currentTab === 'compare' && <ComparePage />}
-        {currentTab === 'profiles' && <ProfileExplorerPage />}
-        {currentTab === 'builder' && <ProfileBuilderPage />}
-        {currentTab === 'calendar' && <CalendarPage />}
-        {currentTab === 'scenarios' && <ScenarioLabPage />}
-        {currentTab === 'live' && <LiveConsolePage />}
-        {currentTab === 'analytics' && <AnalyticsPage />}
+        {currentTab === 'compare' && (
+          <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-6 pb-12">
+            <ComparePage />
+          </div>
+        )}
+        {currentTab === 'profiles' && (
+          <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-6 pb-12">
+            <ProfileExplorerPage />
+          </div>
+        )}
+        {currentTab === 'builder' && (
+          <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-6 pb-12">
+            <ProfileBuilderPage />
+          </div>
+        )}
+        {currentTab === 'calendar' && (
+          <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-6 pb-12">
+            <CalendarPage />
+          </div>
+        )}
+        {currentTab === 'scenarios' && (
+          <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-6 pb-12">
+            <ScenarioLabPage />
+          </div>
+        )}
+        {currentTab === 'live' && (
+          <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-6 pb-12">
+            <LiveConsolePage />
+          </div>
+        )}
+        {currentTab === 'analytics' && (
+          <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-6 pb-12">
+            <AnalyticsPage />
+          </div>
+        )}
       </main>
     </div>
   );

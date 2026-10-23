@@ -1,127 +1,109 @@
 import React from 'react';
 import { useLabStore } from '../store/useLabStore';
-import { Shield, Sparkles, Key, HardDrive } from 'lucide-react';
+import { ShieldCheck, ShieldAlert } from 'lucide-react';
 
 export const PooledGauges: React.FC = () => {
-  const { replayState, liveState, mode } = useLabStore();
+  const { cluster, replayState, liveState, mode } = useLabStore();
 
-  const pooled =
-    mode === 'live'
-      ? liveState?.pooled
-        ? {
-            total: liveState.pooled.total,
-            available: liveState.pooled.available,
-            allocated: {
-              gpu: Math.max(0, liveState.pooled.total.gpu - liveState.pooled.available.gpu),
-              lic: Math.max(0, liveState.pooled.total.lic - liveState.pooled.available.lic),
-              io: Math.max(0, liveState.pooled.total.io - liveState.pooled.available.io),
-            },
-          }
-        : null
-      : replayState?.pooled;
+  const totalPooled = cluster?.pooled || { gpu: 6, lic: 4, io: 5 };
+  const allocPooled =
+    mode === 'live' && liveState?.pooled
+      ? {
+          gpu: Math.max(0, liveState.pooled.total.gpu - liveState.pooled.available.gpu),
+          lic: Math.max(0, liveState.pooled.total.lic - liveState.pooled.available.lic),
+          io: Math.max(0, liveState.pooled.total.io - liveState.pooled.available.io),
+        }
+      : replayState?.pooled?.allocated || { gpu: 0, lic: 0, io: 0 };
 
-  if (!pooled) return null;
-
-  const isSafe =
+  const bankerSafe =
     mode === 'live'
       ? liveState?.banker_safe_sequence !== null
-      : replayState?.banker_safe !== false;
+      : replayState?.banker_safe ?? true;
 
-  const items = [
+  const getPercent = (alloc: number, total: number) => {
+    if (!total || total <= 0) return 0;
+    return Math.min(100, Math.round((alloc / total) * 100));
+  };
+
+  const gpuPct = getPercent(allocPooled.gpu, totalPooled.gpu);
+  const licPct = getPercent(allocPooled.lic, totalPooled.lic);
+  const ioPct = getPercent(allocPooled.io, totalPooled.io);
+
+  const gauges = [
     {
-      key: 'gpu',
-      label: 'GPU Accelerators',
-      icon: <Sparkles className="w-3.5 h-3.5 text-emerald-400" />,
-      total: pooled.total.gpu,
-      allocated: pooled.allocated.gpu,
-      available: pooled.available.gpu,
-      barGradient: 'bg-gradient-to-r from-emerald-500 to-teal-400',
-      textColor: 'text-emerald-400',
+      label: 'GPU accelerators',
+      value: gpuPct,
+      amount: `${allocPooled.gpu.toString().padStart(2, '0')} / ${totalPooled.gpu.toString().padStart(2, '0')}`,
+      color: 'mint',
     },
     {
-      key: 'lic',
-      label: 'Software Licenses',
-      icon: <Key className="w-3.5 h-3.5 text-sky-400" />,
-      total: pooled.total.lic,
-      allocated: pooled.allocated.lic,
-      available: pooled.available.lic,
-      barGradient: 'bg-gradient-to-r from-sky-500 to-indigo-500',
-      textColor: 'text-sky-400',
+      label: 'Software licenses',
+      value: licPct,
+      amount: `${allocPooled.lic.toString().padStart(2, '0')} / ${totalPooled.lic.toString().padStart(2, '0')}`,
+      color: 'lavender',
     },
     {
-      key: 'io',
-      label: 'Shared I/O Slots',
-      icon: <HardDrive className="w-3.5 h-3.5 text-amber-400" />,
-      total: pooled.total.io,
-      allocated: pooled.allocated.io,
-      available: pooled.available.io,
-      barGradient: 'bg-gradient-to-r from-amber-500 to-orange-400',
-      textColor: 'text-amber-400',
+      label: 'Shared I/O slots',
+      value: ioPct,
+      amount: `${allocPooled.io.toString().padStart(2, '0')} / ${totalPooled.io.toString().padStart(2, '0')}`,
+      color: 'orange',
     },
   ];
 
   return (
-    <div className="plume-card rounded-2xl p-5 flex flex-col h-full">
-      <div className="flex items-center justify-between pb-3 border-b border-white/[0.08] mb-4">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <Shield className="w-4 h-4" />
-          </div>
+    <section className="panel gauges-panel flex flex-col justify-between">
+      <div>
+        <div className="section-heading">
           <div>
-            <h2 className="text-sm font-semibold text-white tracking-tight">
-              Pooled Multi-Resources
-            </h2>
-            <p className="text-xs text-slate-400">
-              Cross-node contention monitored by Banker's Algorithm
-            </p>
+            <span className="section-kicker">Shared resources</span>
+            <h2>Pooled gauges</h2>
           </div>
+          {bankerSafe ? (
+            <ShieldCheck className="safe-icon" />
+          ) : (
+            <ShieldAlert className="safe-icon text-[#ffb682]" />
+          )}
         </div>
-        <div
-          className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
-            isSafe
-              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
-              : 'bg-rose-500/10 border-rose-500/25 text-rose-300'
-          }`}
-        >
-          {isSafe ? 'Safe State' : 'Deadlock Unsafe'}
-        </div>
-      </div>
 
-      <div className="space-y-3.5 flex-1 flex flex-col justify-around">
-        {items.map((item) => {
-          const pct = Math.round((item.allocated / Math.max(1, item.total)) * 100);
-          return (
-            <div
-              key={item.key}
-              className="p-3.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.06] transition"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="flex items-center gap-2 text-xs font-medium text-slate-300">
-                  {item.icon} {item.label}
-                </span>
-                <span className={`text-xs font-mono font-bold ${item.textColor}`}>
-                  {pct}%
-                </span>
+        <div className="gauge-list">
+          {gauges.map((g) => (
+            <div className="gauge" key={g.label}>
+              <div className="gauge-head">
+                <span>{g.label}</span>
+                <b>{g.amount}</b>
               </div>
-
-              {/* Progress bar */}
-              <div className="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden mb-2.5">
+              <div className="gauge-bar">
                 <div
-                  className={`h-full rounded-full transition-all duration-300 ${item.barGradient}`}
-                  style={{ width: `${Math.min(100, pct)}%` }}
+                  className={`gauge-fill ${g.color}`}
+                  style={{ width: `${g.value}%` }}
                 />
               </div>
-
-              {/* Details breakdown */}
-              <div className="flex justify-between text-xs text-slate-400">
-                <span>Avail: <b className="text-white font-mono">{item.available}</b></span>
-                <span>In-Use: <b className="text-slate-200 font-mono">{item.allocated}</b></span>
-                <span>Pool: <b className="text-slate-400 font-mono">{item.total}</b></span>
-              </div>
+              <span className="gauge-caption">{g.value}% allocated</span>
             </div>
-          );
-        })}
+          ))}
+        </div>
       </div>
-    </div>
+
+      <div className="safety-card">
+        <div className="safety-icon">
+          {bankerSafe ? <ShieldCheck /> : <ShieldAlert className="text-[#ffb682]" />}
+        </div>
+        <div>
+          <b>Banker safety check</b>
+          <span>
+            {bankerSafe
+              ? 'System is in a safe state'
+              : 'Resource contention: unsafe claim sequence'}
+          </span>
+        </div>
+        <span
+          className={`safe-badge ${
+            bankerSafe ? '' : 'border-[#ffb682] text-[#ffb682]'
+          }`}
+        >
+          {bankerSafe ? 'SAFE' : 'HAZARD'}
+        </span>
+      </div>
+    </section>
   );
 };
