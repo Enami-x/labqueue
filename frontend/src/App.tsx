@@ -25,7 +25,7 @@ export const App: React.FC = () => {
 
       {/* Global Error Notice if any */}
       {error && (
-        <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-4 p-3.5 rounded-xl bg-[#ffb682]/10 border border-[#ffb682]/30 flex items-center justify-between text-xs text-[#ffb682]">
+        <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-4 p-3.5 rounded-xl bg-[#ffb682]/10 border border-[#ffb682]/30 flex items-center justify-between text-xs text-[#ffb682]">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-[#ffb682]" />
             <span>{error}</span>
@@ -50,37 +50,37 @@ export const App: React.FC = () => {
 
         {currentTab === 'overview' && <OverviewPage />}
         {currentTab === 'compare' && (
-          <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-6 pb-12">
+          <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-6 pb-12">
             <ComparePage />
           </div>
         )}
         {currentTab === 'profiles' && (
-          <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-6 pb-12">
+          <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-6 pb-12">
             <ProfileExplorerPage />
           </div>
         )}
         {currentTab === 'builder' && (
-          <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-6 pb-12">
+          <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-6 pb-12">
             <ProfileBuilderPage />
           </div>
         )}
         {currentTab === 'calendar' && (
-          <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-6 pb-12">
+          <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-6 pb-12">
             <CalendarPage />
           </div>
         )}
         {currentTab === 'scenarios' && (
-          <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-6 pb-12">
+          <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-6 pb-12">
             <ScenarioLabPage />
           </div>
         )}
         {currentTab === 'live' && (
-          <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-6 pb-12">
+          <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-6 pb-12">
             <LiveConsolePage />
           </div>
         )}
         {currentTab === 'analytics' && (
-          <div className="w-[min(1240px,calc(100%-48px))] mx-auto mt-6 pb-12">
+          <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-6 pb-12">
             <AnalyticsPage />
           </div>
         )}
