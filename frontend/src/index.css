@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-main: #080b11;
+    --surface: #0f1523;
+    --border: #1f2b45;
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: #e2e8f0;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Custom subtle dark scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0b0f19;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #233152;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #364b7a;
+  }
+}
+
+/* Control-room CRT/grid background texture */
+.cr-grid-bg {
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.cr-glass {
+  background: rgba(15, 21, 35, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(44, 60, 97, 0.5);
+}
+
+.cr-glass-hover:hover {
+  background: rgba(22, 31, 51, 0.85);
+  border-color: rgba(0, 240, 255, 0.4);
+}
+
+.cr-glow-cyan {
+  box-shadow: 0 0 15px -3px rgba(0, 240, 255, 0.35);
+}
+
+.cr-glow-emerald {
+  box-shadow: 0 0 15px -3px rgba(0, 255, 136, 0.35);
+}
+
+.cr-glow-rose {
+  box-shadow: 0 0 15px -3px rgba(255, 51, 102, 0.35);
+}
+
+.cr-glow-amber {
+  box-shadow: 0 0 15px -3px rgba(255, 183, 3, 0.35);
+}
+
+/* Radar pulse animation */
+@keyframes radar-sweep {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.animate-radar {
+  animation: radar-sweep 4s linear infinite;
+}
+
+/* Pulse beacon */
+@keyframes beacon-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.15); }
+}
+
+.animate-beacon {
+  animation: beacon-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

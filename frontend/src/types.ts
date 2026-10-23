@@ -1,0 +1,212 @@
+/**
+ * Types for LabQueue Scheduling System
+ */
+
+export type Role = 'ug' | 'phd' | 'faculty' | 'exam' | 'demo' | 'guest';
+
+export type JobKind = 'training' | 'preprocess' | 'inference' | 'assignment' | 'demo';
+
+export type JobState = 'queued' | 'running' | 'blocked' | 'preempted' | 'done';
+
+export type SchedulerKind = 'FCFS' | 'SJF' | 'RR' | 'PRIORITY';
+
+export type PlacementKind = 'first' | 'best' | 'worst';
+
+export type BankerMode = 'off' | 'lenient' | 'strict';
+
+export interface PooledResources {
+  gpu: number;
+  lic: number;
+  io: number;
+}
+
+export interface Phase {
+  at: number;
+  request: PooledResources;
+}
+
+export interface JobRuntime {
+  remaining: number;
+  node_id: number | null;
+  cpu_alloc: number;
+  mem_alloc: number;
+  pooled_alloc: PooledResources;
+  restarts: number;
+  first_start: number | null;
+  finish: number | null;
+  preempted_total: number;
+}
+
+export interface Job {
+  id: string;
+  user_id: string;
+  role: Role;
+  kind: JobKind;
+  arrival: number;
+  burst: number;
+  deadline?: number | null;
+  cpu: number;
+  mem: number;
+  phases: Phase[];
+  max_claim: PooledResources;
+  state?: JobState;
+  runtime?: JobRuntime;
+}
+
+export interface NodeModel {
+  id: number;
+  name: string;
+  cpu: number;
+  mem: number;
+  up: boolean;
+  is_large?: boolean;
+  allocated_cpu?: number;
+  allocated_mem?: number;
+}
+
+export interface ClusterModel {
+  nodes: NodeModel[];
+  pooled: PooledResources;
+}
+
+export interface PriorityWeights {
+  role: number;
+  deadline: number;
+  wait: number;
+  size: number;
+}
+
+export interface Profile {
+  name: string;
+  family: string;
+  scheduler: SchedulerKind;
+  quantum?: number | null;
+  preemptive: boolean;
+  aging_rate: number;
+  weights?: PriorityWeights | null;
+  placement: PlacementKind;
+  banker: BankerMode;
+  quota_per_user?: number | null;
+  reserved_role?: Role | null;
+  reserved_pct: number;
+  preempt_by?: Role[] | null;
+  backfill: boolean;
+}
+
+export interface SimEvent {
+  seq: number;
+  t: number;
+  type: string;
+  job_id?: string | null;
+  details?: Record<string, any>;
+  [key: string]: any;
+}
+
+export interface RunMetrics {
+  makespan: number;
+  throughput: number;
+  cpu_util_avg: number;
+  mem_util_avg: number;
+  avg_wait: number;
+  p95_wait: number;
+  p99_wait: number;
+  jains_fairness: number;
+  deadlocks_detected: number;
+  banker_denials: number;
+  preemptions: number;
+  restarts: number;
+  starved_jobs: number;
+  jobs_completed: number;
+  total_jobs: number;
+  wait_by_role: Record<string, number>;
+  time_series?: {
+    t: number[];
+    queue_len: number[];
+    util: number[];
+    frag: number[];
+  };
+}
+
+export interface RunResult {
+  run_id: string;
+  profile_name: string;
+  seed: number;
+  metrics: RunMetrics;
+  events: SimEvent[];
+}
+
+export interface LiveStateSnapshot {
+  session_id: string;
+  profile: string;
+  elapsed_seconds: number;
+  nodes: {
+    id: number;
+    name: string;
+    is_up: boolean;
+    cpu_total: number;
+    cpu_allocated: number;
+    cpu_available: number;
+    mem_total: number;
+    mem_allocated: number;
+    mem_available: number;
+  }[];
+  pooled: {
+    total: PooledResources;
+    available: PooledResources;
+  };
+  banker_safe_sequence?: string[] | null;
+  counts: {
+    ready: number;
+    running: number;
+    suspended: number;
+    completed: number;
+    failed: number;
+    total: number;
+  };
+  ready_queue: {
+    id: string;
+    role: Role;
+    kind: JobKind;
+    cpu: number;
+    mem: number;
+    arrival: number;
+    score: number;
+  }[];
+  running_jobs: {
+    id: string;
+    node_id: number;
+    role: Role;
+    kind: JobKind;
+    metrics: {
+      status: string;
+      cpu_percent: number;
+      memory_rss_mb: number;
+    };
+  }[];
+}
+
+export interface CalendarSlot {
+  day_of_week: number; // 0=Mon, 6=Sun
+  start_minute: number;
+  end_minute: number;
+  profile_name: string;
+  label: string;
+}
+
+export interface TriggerRule {
+  id: string;
+  name: string;
+  priority: number;
+  profile_name: string;
+  condition: {
+    type: 'nodes_down' | 'queue_length' | 'gpu_util' | 'starvation_count';
+    op: '>' | '>=' | '<' | '<=' | '==';
+    threshold: number;
+  };
+}
+
+export interface ScheduleConfig {
+  default_profile: string;
+  slots: CalendarSlot[];
+  triggers: TriggerRule[];
+}
