@@ -114,7 +114,7 @@ export const KpiStrip: React.FC = () => {
           <Hourglass className="w-3 h-3 text-cr-amber" /> P99 Wait
         </span>
         <div className="text-lg font-bold font-mono text-cr-amber mt-0.5">
-          {metrics.p99_wait.toFixed(1)} <span className="text-xs text-slate-400">m</span>
+          {(metrics.p99_wait ?? metrics.p95_wait ?? 0).toFixed(1)} <span className="text-xs text-slate-400">m</span>
         </div>
       </div>
 

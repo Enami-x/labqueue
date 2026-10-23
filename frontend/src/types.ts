@@ -108,8 +108,8 @@ export interface RunMetrics {
   cpu_util_avg: number;
   mem_util_avg: number;
   avg_wait: number;
-  p95_wait: number;
-  p99_wait: number;
+  p95_wait?: number;
+  p99_wait?: number;
   jains_fairness: number;
   deadlocks_detected: number;
   banker_denials: number;

@@ -37,6 +37,14 @@ def _p95(values: List[float]) -> float:
     return s[max(0, idx)]
 
 
+def _p99(values: List[float]) -> float:
+    if not values:
+        return 0.0
+    s = sorted(values)
+    idx = int(math.ceil(0.99 * len(s))) - 1
+    return s[max(0, idx)]
+
+
 # ---------------------------------------------------------------------------
 # Jain's fairness index
 # ---------------------------------------------------------------------------
@@ -77,6 +85,7 @@ def compute_metrics(
     waits = _wait_times(done_jobs)
     avg_wait = statistics.mean(waits) if waits else 0.0
     p95_wait = _p95(waits)
+    p99_wait = _p99(waits)
     max_wait = max(waits) if waits else 0
 
     # ---- turnaround -----------------------------------------------------
@@ -133,6 +142,7 @@ def compute_metrics(
     return {
         "avg_wait":           avg_wait,
         "p95_wait":           p95_wait,
+        "p99_wait":           p99_wait,
         "max_wait":           max_wait,
         "avg_turnaround":     avg_turnaround,
         "avg_response":       avg_response,

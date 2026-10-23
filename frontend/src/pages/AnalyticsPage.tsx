@@ -47,7 +47,7 @@ export const AnalyticsPage: React.FC = () => {
             <Clock className="w-4 h-4 text-cr-cyan" /> Tail Latency Ratio (P99 / Avg)
           </span>
           <span className="text-2xl font-bold text-cr-cyan">
-            {metrics?.avg_wait ? (metrics.p99_wait / Math.max(0.01, metrics.avg_wait)).toFixed(1) : '1.0'}x
+            {metrics?.avg_wait ? (((metrics.p99_wait ?? metrics.p95_wait ?? metrics.avg_wait) / Math.max(0.01, metrics.avg_wait))).toFixed(1) : '1.0'}x
           </span>
           <p className="text-[11px] text-slate-400 mt-1 font-sans">
             Ratio of extreme waiting times relative to median job wait.
@@ -126,7 +126,7 @@ export const AnalyticsPage: React.FC = () => {
           </div>
           <div className="flex justify-between text-[10px] text-slate-500">
             <span>T=0m</span>
-            <span>Simulation Makespan: {metrics?.makespan.toFixed(0)}m</span>
+            <span>Simulation Makespan: {(metrics?.makespan ?? 0).toFixed(0)}m</span>
           </div>
         </div>
       )}

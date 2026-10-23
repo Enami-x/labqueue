@@ -149,7 +149,7 @@ export const ComparePage: React.FC = () => {
                     )}
                   </td>
                   <td className="py-3 px-3 text-cr-amber font-bold">
-                    {m.p99_wait.toFixed(1)}m
+                    {(m.p99_wait ?? m.p95_wait ?? 0).toFixed(1)}m
                   </td>
                   <td className="py-3 px-3">
                     <span
