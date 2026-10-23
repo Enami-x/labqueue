@@ -102,12 +102,24 @@ export const ComparePage: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-cr-border/60">
             {runsList.map((run, idx) => {
-              const m = run.metrics;
+              const m = run?.metrics || ({} as any);
               const isBase = idx === 0;
 
-              const makespanDelta = baseline ? m.makespan - baseline.makespan : 0;
-              const waitDelta = baseline ? m.avg_wait - baseline.avg_wait : 0;
-              const jainDelta = baseline ? m.jains_fairness - baseline.jains_fairness : 0;
+              const makespan = m.makespan ?? 0;
+              const avgWait = m.avg_wait ?? 0;
+              const p99 = m.p99_wait ?? m.p95_wait ?? 0;
+              const jain = m.jains_fairness ?? m.fairness_index ?? 0;
+              const cpuUtil = m.cpu_util_avg ?? m.utilization ?? 0;
+              const deadlocks = m.deadlocks_detected ?? 0;
+              const starved = m.starved_jobs ?? m.starvation_count ?? 0;
+
+              const baseMakespan = baseline?.makespan ?? 0;
+              const baseWait = baseline?.avg_wait ?? 0;
+              const baseJain = baseline?.jains_fairness ?? (baseline as any)?.fairness_index ?? 0;
+
+              const makespanDelta = baseline ? makespan - baseMakespan : 0;
+              const waitDelta = baseline ? avgWait - baseWait : 0;
+              const jainDelta = baseline ? jain - baseJain : 0;
 
               return (
                 <tr key={run.run_id} className="hover:bg-cr-card/50 transition">
@@ -120,10 +132,10 @@ export const ComparePage: React.FC = () => {
                     )}
                   </td>
                   <td className="py-3 px-3 text-cr-cyan font-bold">
-                    {run.events[0]?.details?.scheduler || 'DYNAMIC'}
+                    {run.events?.[0]?.details?.scheduler || 'DYNAMIC'}
                   </td>
                   <td className="py-3 px-3">
-                    <span className="text-white font-bold">{m.makespan.toFixed(0)}m</span>
+                    <span className="text-white font-bold">{makespan.toFixed(0)}m</span>
                     {!isBase && (
                       <span
                         className={`ml-2 text-[10px] ${
@@ -136,7 +148,7 @@ export const ComparePage: React.FC = () => {
                     )}
                   </td>
                   <td className="py-3 px-3">
-                    <span className="text-cr-cyan font-bold">{m.avg_wait.toFixed(1)}m</span>
+                    <span className="text-cr-cyan font-bold">{avgWait.toFixed(1)}m</span>
                     {!isBase && (
                       <span
                         className={`ml-2 text-[10px] ${
@@ -149,19 +161,19 @@ export const ComparePage: React.FC = () => {
                     )}
                   </td>
                   <td className="py-3 px-3 text-cr-amber font-bold">
-                    {(m.p99_wait ?? m.p95_wait ?? 0).toFixed(1)}m
+                    {p99.toFixed(1)}m
                   </td>
                   <td className="py-3 px-3">
                     <span
                       className={`font-bold ${
-                        m.jains_fairness >= 0.85
+                        jain >= 0.85
                           ? 'text-cr-emerald'
-                          : m.jains_fairness >= 0.65
+                          : jain >= 0.65
                           ? 'text-cr-amber'
                           : 'text-cr-rose'
                       }`}
                     >
-                      {m.jains_fairness.toFixed(3)}
+                      {jain.toFixed(3)}
                     </span>
                     {!isBase && (
                       <span
@@ -175,22 +187,22 @@ export const ComparePage: React.FC = () => {
                     )}
                   </td>
                   <td className="py-3 px-3 text-blue-300">
-                    {(m.cpu_util_avg * 100).toFixed(1)}%
+                    {(cpuUtil * 100).toFixed(1)}%
                   </td>
                   <td className="py-3 px-3">
                     <span
                       className={
-                        m.deadlocks_detected > 0 ? 'text-cr-rose font-bold' : 'text-slate-400'
+                        deadlocks > 0 ? 'text-cr-rose font-bold' : 'text-slate-400'
                       }
                     >
-                      {m.deadlocks_detected}
+                      {deadlocks}
                     </span>
                   </td>
                   <td className="py-3 px-3">
                     <span
-                      className={m.starved_jobs > 0 ? 'text-cr-amber font-bold' : 'text-slate-400'}
+                      className={starved > 0 ? 'text-cr-amber font-bold' : 'text-slate-400'}
                     >
-                      {m.starved_jobs}
+                      {starved}
                     </span>
                   </td>
                 </tr>
