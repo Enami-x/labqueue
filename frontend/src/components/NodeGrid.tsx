@@ -1,7 +1,7 @@
 import React from 'react';
 import { useLabStore } from '../store/useLabStore';
 import { api } from '../services/api';
-import { Server, AlertTriangle, ShieldCheck, PowerOff, RotateCcw } from 'lucide-react';
+import { Server, PowerOff, RotateCcw } from 'lucide-react';
 
 export const NodeGrid: React.FC = () => {
   const { replayState, liveState, mode, setSelectedJobId } = useLabStore();
@@ -23,37 +23,44 @@ export const NodeGrid: React.FC = () => {
     }
   };
 
-  const getRoleColor = (role?: string) => {
+  const getRoleBadge = (role?: string) => {
     switch (role) {
       case 'faculty':
-        return 'bg-purple-600/40 text-purple-300 border-purple-500/50';
+        return 'bg-purple-500/15 text-purple-300 border-purple-500/25';
       case 'phd':
-        return 'bg-indigo-600/40 text-indigo-300 border-indigo-500/50';
+        return 'bg-indigo-500/15 text-indigo-300 border-indigo-500/25';
       case 'exam':
-        return 'bg-cr-rose/40 text-cr-rose border-cr-rose/50';
+        return 'bg-rose-500/15 text-rose-300 border-rose-500/25';
       case 'demo':
-        return 'bg-cr-amber/40 text-cr-amber border-cr-amber/50';
+        return 'bg-amber-500/15 text-amber-300 border-amber-500/25';
       case 'ug':
       default:
-        return 'bg-cr-cyan/30 text-cr-cyan border-cr-cyan/40';
+        return 'bg-sky-500/15 text-sky-300 border-sky-500/25';
     }
   };
 
   return (
-    <div className="flex flex-col bg-cr-surface border border-cr-border rounded-xl p-4 shadow-lg">
-      <div className="flex items-center justify-between pb-3 border-b border-cr-border mb-3">
-        <div className="flex items-center gap-2">
-          <Server className="w-4 h-4 text-cr-cyan" />
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200 font-mono">
-            Compute Nodes Matrix ({nodes.length} Nodes)
-          </h2>
+    <div className="plume-card rounded-2xl p-5 flex flex-col">
+      <div className="flex items-center justify-between pb-3 border-b border-white/[0.08] mb-4">
+        <div className="flex items-center gap-2.5">
+          <div className="p-1.5 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20">
+            <Server className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-white tracking-tight">
+              Cluster Compute Nodes
+            </h2>
+            <p className="text-xs text-slate-400">
+              {nodes.length} nodes registered • Heterogeneous core & memory topologies
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-3 text-[11px] font-mono text-slate-400">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-cr-emerald" /> Healthy
+        <div className="flex items-center gap-3 text-xs font-medium text-slate-400">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" /> Online
           </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-cr-rose" /> Outage
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-rose-400" /> Outage
           </span>
         </div>
       </div>
@@ -61,39 +68,38 @@ export const NodeGrid: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
         {nodes.map((node: any) => {
           const isUp = mode === 'live' ? node.is_up : node.up;
-          const isLarge = node.cpu_total >= 16;
-          const cpuPct = Math.round(
-            (node.cpu_allocated / Math.max(1, node.cpu_total)) * 100
-          );
-          const memPct = Math.round(
-            (node.mem_allocated / Math.max(1, node.mem_total)) * 100
-          );
+          const isLarge = (node.cpu_total ?? node.cpu ?? 0) >= 16;
+          const cpuTotal = node.cpu_total ?? node.cpu ?? 1;
+          const cpuAllocated = node.cpu_allocated ?? 0;
+          const memTotal = node.mem_total ?? node.mem ?? 1;
+          const memAllocated = node.mem_allocated ?? 0;
+
+          const cpuPct = Math.round((cpuAllocated / Math.max(1, cpuTotal)) * 100);
+          const memPct = Math.round((memAllocated / Math.max(1, memTotal)) * 100);
 
           return (
             <div
               key={node.id}
-              className={`flex flex-col p-3 rounded-xl border transition-all duration-200 ${
+              className={`flex flex-col p-3.5 rounded-2xl border transition-all duration-200 ${
                 !isUp
-                  ? 'bg-cr-rose/10 border-cr-rose/40 opacity-75'
-                  : isLarge
-                  ? 'bg-cr-card/90 border-cr-borderLight cr-glass-hover'
-                  : 'bg-cr-card border-cr-border cr-glass-hover'
+                  ? 'bg-rose-500/[0.04] border-rose-500/25 opacity-75'
+                  : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.08] hover:border-white/[0.15]'
               }`}
             >
               {/* Header */}
-              <div className="flex items-center justify-between pb-2 mb-2 border-b border-cr-border/60">
+              <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.06]">
                 <div className="flex items-center gap-2">
-                  <div
+                  <span
                     className={`w-2 h-2 rounded-full ${
-                      isUp ? 'bg-cr-emerald cr-glow-emerald' : 'bg-cr-rose animate-ping'
+                      isUp ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-rose-400 animate-pulse'
                     }`}
                   />
-                  <span className="font-mono font-bold text-xs text-white">
+                  <span className="font-mono font-semibold text-xs text-white">
                     {node.name}
                   </span>
                   {isLarge && (
-                    <span className="px-1.5 py-0.2 text-[9px] font-mono font-bold uppercase rounded bg-purple-900/60 text-purple-300 border border-purple-700/50">
-                      LARGE
+                    <span className="px-1.5 py-0.5 text-[9px] font-medium uppercase rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/25">
+                      Large
                     </span>
                   )}
                 </div>
@@ -103,10 +109,10 @@ export const NodeGrid: React.FC = () => {
                   <button
                     onClick={() => handleFailToggle(node.id, isUp)}
                     title={isUp ? 'Simulate Node Outage' : 'Restore Node'}
-                    className={`p-1 rounded text-[10px] font-mono transition ${
+                    className={`p-1.5 rounded-lg text-xs transition ${
                       isUp
-                        ? 'bg-cr-rose/20 text-cr-rose hover:bg-cr-rose/30'
-                        : 'bg-cr-emerald/20 text-cr-emerald hover:bg-cr-emerald/30'
+                        ? 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25'
+                        : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
                     }`}
                   >
                     {isUp ? <PowerOff className="w-3 h-3" /> : <RotateCcw className="w-3 h-3" />}
@@ -115,47 +121,47 @@ export const NodeGrid: React.FC = () => {
               </div>
 
               {/* Resource Bars */}
-              <div className="space-y-2 text-[11px] font-mono">
+              <div className="space-y-2 text-xs">
                 {/* CPU Bar */}
                 <div>
-                  <div className="flex justify-between text-slate-400 mb-0.5">
-                    <span>CPU: {node.cpu_allocated} / {node.cpu_total} cores</span>
-                    <span className={cpuPct > 90 ? 'text-cr-rose font-bold' : 'text-slate-300'}>
+                  <div className="flex justify-between text-slate-400 mb-1 text-[11px]">
+                    <span>CPU: {cpuAllocated}/{cpuTotal}</span>
+                    <span className={cpuPct > 90 ? 'text-rose-400 font-bold' : 'text-slate-300'}>
                       {cpuPct}%
                     </span>
                   </div>
-                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
                     <div
-                      className={`h-full transition-all duration-300 ${
+                      className={`h-full rounded-full transition-all duration-300 ${
                         !isUp
-                          ? 'bg-slate-700'
+                          ? 'bg-rose-500'
                           : cpuPct > 90
-                          ? 'bg-cr-rose'
-                          : cpuPct > 60
-                          ? 'bg-cr-amber'
-                          : 'bg-cr-cyan'
+                          ? 'bg-rose-500'
+                          : cpuPct > 65
+                          ? 'bg-amber-400'
+                          : 'bg-sky-400'
                       }`}
                       style={{ width: `${Math.min(100, isUp ? cpuPct : 0)}%` }}
                     />
                   </div>
                 </div>
 
-                {/* Memory Bar */}
+                {/* RAM Bar */}
                 <div>
-                  <div className="flex justify-between text-slate-400 mb-0.5">
-                    <span>RAM: {node.mem_allocated} / {node.mem_total} GB</span>
-                    <span className={memPct > 90 ? 'text-cr-rose font-bold' : 'text-slate-300'}>
+                  <div className="flex justify-between text-slate-400 mb-1 text-[11px]">
+                    <span>RAM: {memAllocated}/{memTotal} GB</span>
+                    <span className={memPct > 90 ? 'text-rose-400 font-bold' : 'text-slate-300'}>
                       {memPct}%
                     </span>
                   </div>
-                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
                     <div
-                      className={`h-full transition-all duration-300 ${
+                      className={`h-full rounded-full transition-all duration-300 ${
                         !isUp
-                          ? 'bg-slate-700'
+                          ? 'bg-rose-500'
                           : memPct > 90
-                          ? 'bg-cr-rose'
-                          : 'bg-blue-400'
+                          ? 'bg-rose-500'
+                          : 'bg-indigo-400'
                       }`}
                       style={{ width: `${Math.min(100, isUp ? memPct : 0)}%` }}
                     />
@@ -163,34 +169,26 @@ export const NodeGrid: React.FC = () => {
                 </div>
               </div>
 
-              {/* Running Jobs Chips */}
-              <div className="mt-3 pt-2 border-t border-cr-border/40">
-                <span className="text-[10px] text-slate-500 font-mono block mb-1">
-                  Active Dispatches:
-                </span>
-                <div className="flex flex-wrap gap-1 min-h-[22px]">
-                  {node.running_job_ids && node.running_job_ids.length > 0 ? (
-                    node.running_job_ids.map((jid: string) => {
-                      const job = replayState?.jobs?.[jid];
-                      return (
-                        <button
-                          key={jid}
-                          onClick={() => setSelectedJobId(jid)}
-                          className={`px-1.5 py-0.5 text-[10px] font-mono rounded border transition hover:scale-105 ${getRoleColor(
-                            job?.role
-                          )}`}
-                          title={`Click to inspect ${jid}`}
-                        >
-                          {jid}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <span className="text-[10px] text-slate-600 font-mono italic">
-                      {isUp ? 'Idle' : 'Offline'}
-                    </span>
-                  )}
-                </div>
+              {/* Running Jobs Pills */}
+              <div className="mt-3 pt-2 border-t border-white/[0.06] flex flex-wrap gap-1 items-center min-h-[26px]">
+                {node.running_job_ids && node.running_job_ids.length > 0 ? (
+                  node.running_job_ids.map((jid: string) => {
+                    const job = replayState?.jobs?.[jid];
+                    return (
+                      <button
+                        key={jid}
+                        onClick={() => setSelectedJobId(jid)}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono border transition ${getRoleBadge(
+                          job?.role
+                        )} hover:scale-105`}
+                      >
+                        {jid}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <span className="text-[10px] text-slate-500 italic">Idle</span>
+                )}
               </div>
             </div>
           );

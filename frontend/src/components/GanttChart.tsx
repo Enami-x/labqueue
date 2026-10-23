@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useLabStore } from '../store/useLabStore';
-import { BarChart2, Info } from 'lucide-react';
+import { BarChart2 } from 'lucide-react';
 
 interface GanttInterval {
   jobId: string;
@@ -17,7 +17,6 @@ export const GanttChart: React.FC = () => {
 
   const [hoveredJob, setHoveredJob] = useState<GanttInterval | null>(null);
 
-  // Parse events into node intervals
   const { intervals, nodesList } = useMemo(() => {
     if (!runResult || !cluster) {
       return { intervals: [], nodesList: [] };
@@ -57,13 +56,12 @@ export const GanttChart: React.FC = () => {
       }
     }
 
-    // Close any still running at end of sim
     for (const [jid, current] of activeRuns.entries()) {
       intervals.push({
         jobId: jid,
         nodeId: current.nodeId,
         start: current.start,
-        end: runResult.metrics.makespan || maxScrubberTime,
+        end: runResult.metrics?.makespan || maxScrubberTime,
         role: current.role,
         kind: current.kind,
       });
@@ -74,62 +72,81 @@ export const GanttChart: React.FC = () => {
 
   if (!runResult || !cluster) return null;
 
-  const totalTime = Math.max(1, runResult.metrics.makespan || maxScrubberTime);
-  const rowHeight = 32;
+  const totalTime = Math.max(1, runResult.metrics?.makespan || maxScrubberTime);
+  const rowHeight = 34;
   const chartHeight = nodesList.length * rowHeight;
 
   const getRoleFill = (role: string) => {
     switch (role) {
       case 'faculty':
-        return 'fill-purple-500/80 stroke-purple-400';
+        return 'fill-purple-500/80 stroke-purple-400/60';
       case 'phd':
-        return 'fill-indigo-500/80 stroke-indigo-400';
+        return 'fill-indigo-500/80 stroke-indigo-400/60';
       case 'exam':
-        return 'fill-cr-rose/80 stroke-cr-rose';
+        return 'fill-rose-500/80 stroke-rose-400/60';
       case 'demo':
-        return 'fill-cr-amber/80 stroke-cr-amber';
+        return 'fill-amber-500/80 stroke-amber-400/60';
       case 'ug':
       default:
-        return 'fill-cr-cyan/80 stroke-cr-cyan';
+        return 'fill-sky-500/80 stroke-sky-400/60';
     }
   };
 
-  const playheadX = `${(scrubberTime / totalTime) * 100}%`;
+  const playheadX = `${Math.min(100, Math.max(0, (scrubberTime / totalTime) * 100))}%`;
 
   return (
-    <div className="bg-cr-surface border border-cr-border rounded-xl p-4 shadow-lg flex flex-col">
-      <div className="flex items-center justify-between pb-3 border-b border-cr-border mb-3">
-        <div className="flex items-center gap-2">
-          <BarChart2 className="w-4 h-4 text-cr-cyan" />
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200 font-mono">
-            Cluster Gantt Timeline & Allocation Tracks
-          </h2>
+    <div className="plume-card rounded-2xl p-5 flex flex-col">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.08] mb-4 gap-2">
+        <div className="flex items-center gap-2.5">
+          <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            <BarChart2 className="w-4 h-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-white tracking-tight">
+              Gantt Execution Timeline
+            </h2>
+            <p className="text-xs text-slate-400">
+              Interactive timeline • Click to inspect jobs • Drag scrubber to replay
+            </p>
+          </div>
         </div>
-        <div className="text-[11px] font-mono text-slate-400">
-          Click bar to inspect job • Click timeline to seek
+
+        {/* Legend */}
+        <div className="flex items-center gap-3 text-xs text-slate-400">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded bg-sky-500/80" /> Undergrad
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded bg-indigo-500/80" /> PhD
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded bg-purple-500/80" /> Faculty
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded bg-rose-500/80" /> Exam
+          </span>
         </div>
       </div>
 
-      <div className="relative overflow-x-auto select-none">
-        <div className="min-w-[650px] flex flex-col">
-          {/* Main SVG Gantt area */}
+      <div className="overflow-x-auto">
+        <div className="min-w-[650px] relative">
           <div className="flex">
-            {/* Y-axis Labels */}
-            <div className="w-24 shrink-0 flex flex-col border-r border-cr-border pr-2 font-mono text-[11px] text-slate-400">
+            {/* Left Node Labels */}
+            <div className="w-24 shrink-0 flex flex-col border-r border-white/[0.08] pr-2">
               {nodesList.map((node) => (
                 <div
                   key={node.id}
                   style={{ height: `${rowHeight}px` }}
-                  className="flex items-center justify-end font-semibold truncate"
+                  className="flex items-center text-xs font-mono text-slate-400 truncate"
                 >
-                  {node.name}
+                  <span className="truncate">{node.name}</span>
                 </div>
               ))}
             </div>
 
             {/* SVG Tracks */}
             <div
-              className="relative flex-1 cursor-crosshair"
+              className="relative flex-1 cursor-crosshair ml-2"
               style={{ height: `${chartHeight}px` }}
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
@@ -139,7 +156,7 @@ export const GanttChart: React.FC = () => {
               }}
             >
               <svg className="w-full h-full">
-                {/* Horizontal grid rows */}
+                {/* Horizontal row dividers */}
                 {nodesList.map((_, idx) => (
                   <line
                     key={idx}
@@ -147,9 +164,9 @@ export const GanttChart: React.FC = () => {
                     y1={idx * rowHeight}
                     x2="100%"
                     y2={idx * rowHeight}
-                    stroke="#1f2b45"
+                    stroke="rgba(255, 255, 255, 0.05)"
                     strokeWidth="1"
-                    strokeDasharray="2,2"
+                    strokeDasharray="3,3"
                   />
                 ))}
 
@@ -159,7 +176,7 @@ export const GanttChart: React.FC = () => {
                   if (nodeIdx < 0) return null;
 
                   const xPct = (item.start / totalTime) * 100;
-                  const wPct = Math.max(0.4, ((item.end - item.start) / totalTime) * 100);
+                  const wPct = Math.max(0.5, ((item.end - item.start) / totalTime) * 100);
                   const y = nodeIdx * rowHeight + 5;
                   const h = rowHeight - 10;
 
@@ -170,10 +187,10 @@ export const GanttChart: React.FC = () => {
                       y={y}
                       width={`${wPct}%`}
                       height={h}
-                      rx={3}
+                      rx={5}
                       className={`cursor-pointer transition-opacity duration-150 ${getRoleFill(
                         item.role
-                      )} hover:opacity-100 opacity-85`}
+                      )} hover:opacity-100 opacity-90`}
                       strokeWidth="1"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -186,18 +203,18 @@ export const GanttChart: React.FC = () => {
                 })}
               </svg>
 
-              {/* Red playhead tracking line */}
+              {/* Playhead tracking line */}
               <div
-                className="absolute top-0 bottom-0 w-0.5 bg-cr-rose shadow-glow-rose pointer-events-none z-10"
+                className="absolute top-0 bottom-0 w-0.5 bg-sky-400 pointer-events-none z-10 shadow-[0_0_10px_rgba(56,189,248,0.7)]"
                 style={{ left: playheadX }}
               >
-                <div className="w-2.5 h-2.5 -ml-1 bg-cr-rose rounded-full cr-glow-rose" />
+                <div className="w-3 h-3 -ml-1.5 -mt-1.5 bg-sky-400 rounded-full border-2 border-white shadow-md" />
               </div>
             </div>
           </div>
 
           {/* Time axis ticks */}
-          <div className="flex ml-24 mt-2 border-t border-cr-border pt-1 font-mono text-[10px] text-slate-500 justify-between">
+          <div className="flex ml-26 mt-3 border-t border-white/[0.08] pt-2 text-[11px] font-mono text-slate-500 justify-between">
             <span>T=0m</span>
             <span>T={(totalTime * 0.25).toFixed(0)}m</span>
             <span>T={(totalTime * 0.5).toFixed(0)}m</span>
@@ -209,16 +226,16 @@ export const GanttChart: React.FC = () => {
 
       {/* Tooltip on hover */}
       {hoveredJob && (
-        <div className="mt-2.5 p-2 bg-cr-card border border-cr-border rounded-lg text-xs font-mono flex items-center justify-between text-slate-300">
+        <div className="mt-3 p-3 bg-white/[0.04] border border-white/[0.08] rounded-xl text-xs flex items-center justify-between text-slate-300">
           <div className="flex items-center gap-3">
-            <span className="font-bold text-white">{hoveredJob.jobId}</span>
-            <span className="text-slate-400">Role: <b className="text-cr-cyan">{hoveredJob.role}</b></span>
+            <span className="font-mono font-bold text-white">{hoveredJob.jobId}</span>
+            <span className="text-slate-400">Role: <b className="text-sky-300">{hoveredJob.role}</b></span>
             <span className="text-slate-400">Kind: <b className="text-slate-200">{hoveredJob.kind}</b></span>
             <span className="text-slate-400">
               Run: <b>{hoveredJob.start}m</b> → <b>{hoveredJob.end}m</b> ({hoveredJob.end - hoveredJob.start}m)
             </span>
           </div>
-          <span className="text-[11px] text-cr-cyan italic">Click bar to open detailed job inspect drawer</span>
+          <span className="text-xs text-sky-400 italic">Click bar to inspect job details</span>
         </div>
       )}
     </div>

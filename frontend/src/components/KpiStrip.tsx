@@ -2,13 +2,15 @@ import React from 'react';
 import { useLabStore } from '../store/useLabStore';
 import {
   CheckCircle2,
-  Hourglass,
+  Clock,
   Cpu,
   Scale,
   Zap,
   AlertOctagon,
+  ShieldCheck,
   ShieldAlert,
   Flame,
+  Activity,
 } from 'lucide-react';
 
 export const KpiStrip: React.FC = () => {
@@ -22,54 +24,56 @@ export const KpiStrip: React.FC = () => {
     const suspended = liveState.counts.suspended;
 
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 p-4 bg-cr-bg">
-        <div className="flex flex-col p-3 rounded-xl bg-cr-surface border border-cr-border">
-          <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-cr-emerald" /> COMPLETED
-          </span>
-          <span className="text-xl font-bold font-mono text-white mt-1">
-            {completed} <span className="text-xs text-slate-400 font-normal">/ {total}</span>
-          </span>
-        </div>
+      <div className="px-4 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+          <div className="plume-card p-3.5 rounded-2xl flex flex-col justify-between">
+            <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Completed
+            </span>
+            <div className="text-xl font-bold font-mono text-white mt-1">
+              {completed} <span className="text-xs text-slate-400 font-normal">/ {total}</span>
+            </div>
+          </div>
 
-        <div className="flex flex-col p-3 rounded-xl bg-cr-surface border border-cr-border">
-          <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-cr-cyan" /> RUNNING OS JOBS
-          </span>
-          <span className="text-xl font-bold font-mono text-cr-cyan mt-1">{running}</span>
-        </div>
+          <div className="plume-card p-3.5 rounded-2xl flex flex-col justify-between">
+            <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5 text-sky-400" /> Running Jobs
+            </span>
+            <div className="text-xl font-bold font-mono text-sky-400 mt-1">{running}</div>
+          </div>
 
-        <div className="flex flex-col p-3 rounded-xl bg-cr-surface border border-cr-border">
-          <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
-            <Hourglass className="w-3.5 h-3.5 text-cr-amber" /> READY QUEUE
-          </span>
-          <span className="text-xl font-bold font-mono text-cr-amber mt-1">{ready}</span>
-        </div>
+          <div className="plume-card p-3.5 rounded-2xl flex flex-col justify-between">
+            <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-amber-400" /> Ready Queue
+            </span>
+            <div className="text-xl font-bold font-mono text-amber-400 mt-1">{ready}</div>
+          </div>
 
-        <div className="flex flex-col p-3 rounded-xl bg-cr-surface border border-cr-border">
-          <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
-            <Flame className="w-3.5 h-3.5 text-cr-purple" /> SUSPENDED (RR)
-          </span>
-          <span className="text-xl font-bold font-mono text-cr-purple mt-1">{suspended}</span>
-        </div>
+          <div className="plume-card p-3.5 rounded-2xl flex flex-col justify-between">
+            <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+              <Flame className="w-3.5 h-3.5 text-purple-400" /> Preempted
+            </span>
+            <div className="text-xl font-bold font-mono text-purple-300 mt-1">{suspended}</div>
+          </div>
 
-        <div className="flex flex-col p-3 rounded-xl bg-cr-surface border border-cr-border">
-          <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
-            <Cpu className="w-3.5 h-3.5 text-blue-400" /> ACTIVE NODES
-          </span>
-          <span className="text-xl font-bold font-mono text-white mt-1">
-            {liveState.nodes.filter((n) => n.is_up).length}{' '}
-            <span className="text-xs text-slate-400 font-normal">/ {liveState.nodes.length}</span>
-          </span>
-        </div>
+          <div className="plume-card p-3.5 rounded-2xl flex flex-col justify-between">
+            <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+              <Cpu className="w-3.5 h-3.5 text-indigo-400" /> Active Nodes
+            </span>
+            <div className="text-xl font-bold font-mono text-white mt-1">
+              {liveState.nodes.filter((n) => n.is_up).length}{' '}
+              <span className="text-xs text-slate-400 font-normal">/ {liveState.nodes.length}</span>
+            </div>
+          </div>
 
-        <div className="flex flex-col p-3 rounded-xl bg-cr-surface border border-cr-border">
-          <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
-            <ShieldAlert className="w-3.5 h-3.5 text-cr-emerald" /> BANKER STATE
-          </span>
-          <span className="text-sm font-bold font-mono text-cr-emerald mt-2 uppercase">
-            {liveState.banker_safe_sequence ? 'SAFE SEQ OK' : 'NO ACTIVE CONT'}
-          </span>
+          <div className="plume-card p-3.5 rounded-2xl flex flex-col justify-between">
+            <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Banker Status
+            </span>
+            <div className="text-xs font-semibold uppercase font-mono text-emerald-400 mt-2">
+              {liveState.banker_safe_sequence ? 'Safe State' : 'Unsafe'}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -80,101 +84,113 @@ export const KpiStrip: React.FC = () => {
     return null;
   }
 
-  // Jain's fairness index color
-  const jain = metrics.jains_fairness || 0;
+  const jain = metrics.jains_fairness ?? (metrics as any).fairness_index ?? 0;
   const jainColor =
-    jain >= 0.85 ? 'text-cr-emerald' : jain >= 0.65 ? 'text-cr-amber' : 'text-cr-rose';
+    jain >= 0.85 ? 'text-emerald-400' : jain >= 0.65 ? 'text-amber-400' : 'text-rose-400';
+
+  const avgWait = metrics.avg_wait ?? 0;
+  const p99Wait = metrics.p99_wait ?? metrics.p95_wait ?? 0;
+  const cpuUtil = (metrics.cpu_util_avg ?? (metrics as any).utilization ?? 0) * 100;
+  const makespan = metrics.makespan ?? 0;
+  const deadlocks = metrics.deadlocks_detected ?? 0;
+  const denials = metrics.banker_denials ?? 0;
+  const completed = metrics.jobs_completed ?? 0;
+  const total = metrics.total_jobs ?? completed;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 p-3.5 bg-cr-bg border-b border-cr-border">
-      {/* Completed / Total */}
-      <div className="flex flex-col p-2.5 rounded-xl bg-cr-surface/80 border border-cr-border">
-        <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1 uppercase">
-          <CheckCircle2 className="w-3 h-3 text-cr-emerald" /> Jobs Done
-        </span>
-        <div className="text-lg font-bold font-mono text-white mt-0.5">
-          {metrics.jobs_completed}{' '}
-          <span className="text-xs text-slate-400 font-normal">/ {metrics.total_jobs}</span>
+    <div className="px-4 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
+        {/* Completed / Total */}
+        <div className="plume-card p-3 rounded-2xl flex flex-col justify-between">
+          <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Jobs Done
+          </span>
+          <div className="text-lg font-bold font-mono text-white mt-1">
+            {completed} <span className="text-xs text-slate-400 font-normal">/ {total}</span>
+          </div>
         </div>
-      </div>
 
-      {/* Avg Wait */}
-      <div className="flex flex-col p-2.5 rounded-xl bg-cr-surface/80 border border-cr-border">
-        <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1 uppercase">
-          <Hourglass className="w-3 h-3 text-cr-cyan" /> Avg Wait
-        </span>
-        <div className="text-lg font-bold font-mono text-cr-cyan mt-0.5">
-          {metrics.avg_wait.toFixed(1)} <span className="text-xs text-slate-400">m</span>
+        {/* Avg Wait */}
+        <div className="plume-card p-3 rounded-2xl flex flex-col justify-between">
+          <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-sky-400" /> Avg Wait
+          </span>
+          <div className="text-lg font-bold font-mono text-sky-400 mt-1">
+            {avgWait.toFixed(1)} <span className="text-xs text-slate-400 font-normal">m</span>
+          </div>
         </div>
-      </div>
 
-      {/* P99 Wait */}
-      <div className="flex flex-col p-2.5 rounded-xl bg-cr-surface/80 border border-cr-border">
-        <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1 uppercase">
-          <Hourglass className="w-3 h-3 text-cr-amber" /> P99 Wait
-        </span>
-        <div className="text-lg font-bold font-mono text-cr-amber mt-0.5">
-          {(metrics.p99_wait ?? metrics.p95_wait ?? 0).toFixed(1)} <span className="text-xs text-slate-400">m</span>
+        {/* P99 Wait */}
+        <div className="plume-card p-3 rounded-2xl flex flex-col justify-between">
+          <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-amber-400" /> P99 Wait
+          </span>
+          <div className="text-lg font-bold font-mono text-amber-400 mt-1">
+            {p99Wait.toFixed(1)} <span className="text-xs text-slate-400 font-normal">m</span>
+          </div>
         </div>
-      </div>
 
-      {/* Jain's Fairness */}
-      <div className="flex flex-col p-2.5 rounded-xl bg-cr-surface/80 border border-cr-border">
-        <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1 uppercase">
-          <Scale className="w-3 h-3 text-slate-300" /> Jain Index
-        </span>
-        <div className={`text-lg font-bold font-mono mt-0.5 ${jainColor}`}>
-          {jain.toFixed(3)}
+        {/* Jain's Fairness */}
+        <div className="plume-card p-3 rounded-2xl flex flex-col justify-between">
+          <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+            <Scale className="w-3.5 h-3.5 text-indigo-400" /> Jain Index
+          </span>
+          <div className={`text-lg font-bold font-mono mt-1 ${jainColor}`}>
+            {jain.toFixed(3)}
+          </div>
         </div>
-      </div>
 
-      {/* CPU Util */}
-      <div className="flex flex-col p-2.5 rounded-xl bg-cr-surface/80 border border-cr-border">
-        <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1 uppercase">
-          <Cpu className="w-3 h-3 text-blue-400" /> CPU Util
-        </span>
-        <div className="text-lg font-bold font-mono text-blue-300 mt-0.5">
-          {(metrics.cpu_util_avg * 100).toFixed(1)}%
+        {/* CPU Util */}
+        <div className="plume-card p-3 rounded-2xl flex flex-col justify-between">
+          <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+            <Cpu className="w-3.5 h-3.5 text-indigo-400" /> CPU Util
+          </span>
+          <div className="text-lg font-bold font-mono text-indigo-300 mt-1">
+            {cpuUtil.toFixed(1)}%
+          </div>
         </div>
-      </div>
 
-      {/* Makespan */}
-      <div className="flex flex-col p-2.5 rounded-xl bg-cr-surface/80 border border-cr-border">
-        <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1 uppercase">
-          <Zap className="w-3 h-3 text-indigo-400" /> Makespan
-        </span>
-        <div className="text-lg font-bold font-mono text-white mt-0.5">
-          {metrics.makespan.toFixed(0)} <span className="text-xs text-slate-400">m</span>
+        {/* Makespan */}
+        <div className="plume-card p-3 rounded-2xl flex flex-col justify-between">
+          <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-sky-400" /> Makespan
+          </span>
+          <div className="text-lg font-bold font-mono text-white mt-1">
+            {makespan.toFixed(0)} <span className="text-xs text-slate-400 font-normal">m</span>
+          </div>
         </div>
-      </div>
 
-      {/* Deadlocks */}
-      <div
-        className={`flex flex-col p-2.5 rounded-xl border transition ${
-          metrics.deadlocks_detected > 0
-            ? 'bg-cr-rose/20 border-cr-rose/50 cr-glow-rose'
-            : 'bg-cr-surface/80 border-cr-border'
-        }`}
-      >
-        <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1 uppercase">
-          <AlertOctagon className="w-3 h-3 text-cr-rose" /> Deadlocks
-        </span>
+        {/* Deadlocks */}
         <div
-          className={`text-lg font-bold font-mono mt-0.5 ${
-            metrics.deadlocks_detected > 0 ? 'text-cr-rose' : 'text-slate-300'
+          className={`p-3 rounded-2xl flex flex-col justify-between border transition ${
+            deadlocks > 0
+              ? 'bg-rose-500/10 border-rose-500/30'
+              : 'plume-card'
           }`}
         >
-          {metrics.deadlocks_detected}
+          <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+            <AlertOctagon
+              className={`w-3.5 h-3.5 ${deadlocks > 0 ? 'text-rose-400' : 'text-slate-400'}`}
+            />{' '}
+            Deadlocks
+          </span>
+          <div
+            className={`text-lg font-bold font-mono mt-1 ${
+              deadlocks > 0 ? 'text-rose-400 font-extrabold' : 'text-slate-300'
+            }`}
+          >
+            {deadlocks}
+          </div>
         </div>
-      </div>
 
-      {/* Banker Denials */}
-      <div className="flex flex-col p-2.5 rounded-xl bg-cr-surface/80 border border-cr-border">
-        <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1 uppercase">
-          <ShieldAlert className="w-3 h-3 text-cr-amber" /> Denials
-        </span>
-        <div className="text-lg font-bold font-mono text-slate-200 mt-0.5">
-          {metrics.banker_denials}
+        {/* Banker Denials */}
+        <div className="plume-card p-3 rounded-2xl flex flex-col justify-between">
+          <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+            <ShieldAlert className="w-3.5 h-3.5 text-amber-400" /> Denials
+          </span>
+          <div className="text-lg font-bold font-mono text-slate-200 mt-1">
+            {denials}
+          </div>
         </div>
       </div>
     </div>

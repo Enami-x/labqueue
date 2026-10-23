@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useLabStore } from '../store/useLabStore';
-import { Layers, ArrowUpDown, TrendingUp, TrendingDown, Play, Check } from 'lucide-react';
+import { Layers, ArrowUpDown, Play, Check, TrendingUp, Sparkles } from 'lucide-react';
 
 export const ComparePage: React.FC = () => {
   const {
@@ -28,32 +28,35 @@ export const ComparePage: React.FC = () => {
   return (
     <div className="flex-1 p-6 max-w-[1600px] w-full mx-auto space-y-6 overflow-y-auto">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-cr-border">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
         <div>
-          <h1 className="text-xl font-bold font-mono uppercase tracking-wider text-white flex items-center gap-2">
-            <Layers className="w-5 h-5 text-cr-cyan" />
-            Multi-Policy Synchronized Comparison
+          <div className="flex items-center gap-2 text-indigo-400 text-xs font-semibold uppercase tracking-wider mb-1">
+            <Layers className="w-4 h-4" />
+            <span>Side-by-Side Policy Evaluation</span>
+          </div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">
+            Multi-Policy Comparison Matrix
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Compare 2 to 4 scheduling algorithms side-by-side against the same exact workload scenario (
-            <b className="text-cr-cyan">{activeScenario}</b>).
+            Evaluating 2 to 4 scheduling algorithms deterministically against workload scenario:{' '}
+            <span className="text-sky-400 font-medium">{activeScenario}</span>.
           </p>
         </div>
 
         <button
           onClick={runCompareBatch}
           disabled={loading || compareProfileNames.length < 2}
-          className="flex items-center gap-2 px-4 py-2 bg-cr-cyan/20 hover:bg-cr-cyan/30 text-cr-cyan border border-cr-cyan/40 rounded-xl font-mono text-xs font-bold transition cr-glow-cyan disabled:opacity-50"
+          className="plume-btn-primary flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-xs transition disabled:opacity-50"
         >
-          <Play className="w-4 h-4 fill-current" />
+          <Play className="w-3.5 h-3.5 fill-current" />
           <span>{loading ? 'Simulating Policies...' : 'Run Comparative Analysis'}</span>
         </button>
       </div>
 
       {/* Profile Selector Chips */}
-      <div className="bg-cr-surface border border-cr-border rounded-xl p-4">
-        <span className="text-xs font-mono text-slate-400 uppercase font-bold block mb-2.5">
-          Select Profiles to Compare (Select 2 to 4):
+      <div className="plume-card rounded-2xl p-5">
+        <span className="text-xs font-semibold text-slate-300 block mb-3">
+          Select Policies to Compare (2 to 4 active):
         </span>
         <div className="flex flex-wrap gap-2">
           {profiles.slice(0, 18).map((p) => {
@@ -62,15 +65,15 @@ export const ComparePage: React.FC = () => {
               <button
                 key={p.name}
                 onClick={() => toggleCompareProfile(p.name)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition border ${
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
                   isSelected
-                    ? 'bg-cr-cyan/20 text-cr-cyan border-cr-cyan/50 font-bold cr-glow-cyan'
-                    : 'bg-cr-card text-slate-400 border-cr-border hover:text-slate-200'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 border border-indigo-400/40'
+                    : 'bg-white/[0.04] text-slate-400 hover:text-white hover:bg-white/[0.08] border border-white/[0.06]'
                 }`}
               >
                 {isSelected && <Check className="w-3.5 h-3.5" />}
                 <span>{p.name}</span>
-                <span className="text-[10px] text-slate-500 uppercase">({p.scheduler})</span>
+                <span className="text-[10px] text-slate-400 uppercase font-mono">({p.scheduler})</span>
               </button>
             );
           })}
@@ -78,29 +81,29 @@ export const ComparePage: React.FC = () => {
       </div>
 
       {/* Comparative Metrics Table */}
-      <div className="bg-cr-surface border border-cr-border rounded-xl p-4 overflow-x-auto shadow-lg">
-        <div className="flex items-center gap-2 pb-3 mb-3 border-b border-cr-border">
-          <ArrowUpDown className="w-4 h-4 text-cr-cyan" />
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200 font-mono">
-            Metric Deltas & Performance Trade-offs
+      <div className="plume-card rounded-2xl p-5 overflow-x-auto">
+        <div className="flex items-center gap-2 pb-3 mb-3 border-b border-white/[0.08]">
+          <ArrowUpDown className="w-4 h-4 text-sky-400" />
+          <h2 className="text-sm font-semibold text-white tracking-tight">
+            Performance Deltas & Trade-off Matrix
           </h2>
         </div>
 
-        <table className="w-full text-left font-mono text-xs">
+        <table className="w-full text-left text-xs">
           <thead>
-            <tr className="border-b border-cr-border text-slate-400 uppercase text-[10px]">
-              <th className="py-2.5 px-3">Profile</th>
-              <th className="py-2.5 px-3">Scheduler</th>
-              <th className="py-2.5 px-3">Makespan</th>
-              <th className="py-2.5 px-3">Avg Wait</th>
-              <th className="py-2.5 px-3">P99 Wait</th>
-              <th className="py-2.5 px-3">Jain's Fairness</th>
-              <th className="py-2.5 px-3">CPU Util</th>
-              <th className="py-2.5 px-3">Deadlocks</th>
-              <th className="py-2.5 px-3">Starvation</th>
+            <tr className="border-b border-white/[0.08] text-slate-400 uppercase text-[11px] font-medium">
+              <th className="py-3 px-3.5">Policy Profile</th>
+              <th className="py-3 px-3.5">Scheduler</th>
+              <th className="py-3 px-3.5">Makespan</th>
+              <th className="py-3 px-3.5">Avg Wait</th>
+              <th className="py-3 px-3.5">P99 Wait</th>
+              <th className="py-3 px-3.5">Jain's Fairness</th>
+              <th className="py-3 px-3.5">CPU Util</th>
+              <th className="py-3 px-3.5">Deadlocks</th>
+              <th className="py-3 px-3.5">Starvation</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-cr-border/60">
+          <tbody className="divide-y divide-white/[0.04]">
             {runsList.map((run, idx) => {
               const m = run?.metrics || ({} as any);
               const isBase = idx === 0;
@@ -108,10 +111,10 @@ export const ComparePage: React.FC = () => {
               const makespan = m.makespan ?? 0;
               const avgWait = m.avg_wait ?? 0;
               const p99 = m.p99_wait ?? m.p95_wait ?? 0;
-              const jain = m.jains_fairness ?? m.fairness_index ?? 0;
-              const cpuUtil = m.cpu_util_avg ?? m.utilization ?? 0;
+              const jain = m.jains_fairness ?? (m as any).fairness_index ?? 0;
+              const cpuUtil = m.cpu_util_avg ?? (m as any).utilization ?? 0;
               const deadlocks = m.deadlocks_detected ?? 0;
-              const starved = m.starved_jobs ?? m.starvation_count ?? 0;
+              const starved = m.starved_jobs ?? (m as any).starvation_count ?? 0;
 
               const baseMakespan = baseline?.makespan ?? 0;
               const baseWait = baseline?.avg_wait ?? 0;
@@ -122,24 +125,26 @@ export const ComparePage: React.FC = () => {
               const jainDelta = baseline ? jain - baseJain : 0;
 
               return (
-                <tr key={run.run_id} className="hover:bg-cr-card/50 transition">
-                  <td className="py-3 px-3">
-                    <span className="font-bold text-white text-xs">{run.profile_name}</span>
-                    {isBase && (
-                      <span className="ml-2 px-1.5 py-0.2 text-[9px] rounded bg-cr-border text-slate-400">
-                        BASELINE
-                      </span>
-                    )}
+                <tr key={run.run_id} className="hover:bg-white/[0.02] transition">
+                  <td className="py-3.5 px-3.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-white">{run.profile_name}</span>
+                      {isBase && (
+                        <span className="px-2 py-0.5 text-[10px] font-medium uppercase rounded-full bg-white/[0.08] text-slate-300">
+                          Baseline
+                        </span>
+                      )}
+                    </div>
                   </td>
-                  <td className="py-3 px-3 text-cr-cyan font-bold">
-                    {run.events?.[0]?.details?.scheduler || 'DYNAMIC'}
+                  <td className="py-3.5 px-3.5 text-sky-400 font-mono font-medium">
+                    {run.events?.[0]?.details?.scheduler || 'Dynamic'}
                   </td>
-                  <td className="py-3 px-3">
+                  <td className="py-3.5 px-3.5 font-mono">
                     <span className="text-white font-bold">{makespan.toFixed(0)}m</span>
                     {!isBase && (
                       <span
-                        className={`ml-2 text-[10px] ${
-                          makespanDelta <= 0 ? 'text-cr-emerald font-bold' : 'text-cr-rose'
+                        className={`ml-2 text-[11px] font-medium ${
+                          makespanDelta <= 0 ? 'text-emerald-400' : 'text-rose-400'
                         }`}
                       >
                         {makespanDelta <= 0 ? '' : '+'}
@@ -147,12 +152,12 @@ export const ComparePage: React.FC = () => {
                       </span>
                     )}
                   </td>
-                  <td className="py-3 px-3">
-                    <span className="text-cr-cyan font-bold">{avgWait.toFixed(1)}m</span>
+                  <td className="py-3.5 px-3.5 font-mono">
+                    <span className="text-sky-400 font-bold">{avgWait.toFixed(1)}m</span>
                     {!isBase && (
                       <span
-                        className={`ml-2 text-[10px] ${
-                          waitDelta <= 0 ? 'text-cr-emerald font-bold' : 'text-cr-rose'
+                        className={`ml-2 text-[11px] font-medium ${
+                          waitDelta <= 0 ? 'text-emerald-400' : 'text-rose-400'
                         }`}
                       >
                         {waitDelta <= 0 ? '' : '+'}
@@ -160,25 +165,25 @@ export const ComparePage: React.FC = () => {
                       </span>
                     )}
                   </td>
-                  <td className="py-3 px-3 text-cr-amber font-bold">
+                  <td className="py-3.5 px-3.5 text-amber-400 font-mono font-bold">
                     {p99.toFixed(1)}m
                   </td>
-                  <td className="py-3 px-3">
+                  <td className="py-3.5 px-3.5 font-mono">
                     <span
                       className={`font-bold ${
                         jain >= 0.85
-                          ? 'text-cr-emerald'
+                          ? 'text-emerald-400'
                           : jain >= 0.65
-                          ? 'text-cr-amber'
-                          : 'text-cr-rose'
+                          ? 'text-amber-400'
+                          : 'text-rose-400'
                       }`}
                     >
                       {jain.toFixed(3)}
                     </span>
                     {!isBase && (
                       <span
-                        className={`ml-2 text-[10px] ${
-                          jainDelta >= 0 ? 'text-cr-emerald' : 'text-cr-rose'
+                        className={`ml-2 text-[11px] font-medium ${
+                          jainDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'
                         }`}
                       >
                         {jainDelta >= 0 ? '+' : ''}
@@ -186,21 +191,21 @@ export const ComparePage: React.FC = () => {
                       </span>
                     )}
                   </td>
-                  <td className="py-3 px-3 text-blue-300">
+                  <td className="py-3.5 px-3.5 text-indigo-300 font-mono">
                     {(cpuUtil * 100).toFixed(1)}%
                   </td>
-                  <td className="py-3 px-3">
+                  <td className="py-3.5 px-3.5 font-mono">
                     <span
                       className={
-                        deadlocks > 0 ? 'text-cr-rose font-bold' : 'text-slate-400'
+                        deadlocks > 0 ? 'text-rose-400 font-bold' : 'text-slate-400'
                       }
                     >
                       {deadlocks}
                     </span>
                   </td>
-                  <td className="py-3 px-3">
+                  <td className="py-3.5 px-3.5 font-mono">
                     <span
-                      className={starved > 0 ? 'text-cr-amber font-bold' : 'text-slate-400'}
+                      className={starved > 0 ? 'text-amber-400 font-bold' : 'text-slate-400'}
                     >
                       {starved}
                     </span>
@@ -212,23 +217,34 @@ export const ComparePage: React.FC = () => {
         </table>
       </div>
 
-      {/* Fairness vs Throughput Trade-off Callout */}
-      <div className="p-4 rounded-xl bg-cr-surface border border-cr-border text-xs font-mono space-y-2">
-        <h3 className="font-bold text-slate-200 uppercase tracking-wide">
-          Key OS Policy Insights Observed:
-        </h3>
-        <ul className="list-disc pl-5 space-y-1 text-slate-400">
-          <li>
-            <b className="text-cr-cyan">SJF / SRTF:</b> Dramatically minimizes average wait time and
-            maximizes makespan efficiency, but can starve longer research training jobs if aging rate = 0.
-          </li>
-          <li>
-            <b className="text-cr-emerald">FCFS with Quota:</b> Provides optimal Jain's fairness index across user cohorts, but experiences head-of-line blocking during bursts.
-          </li>
-          <li>
-            <b className="text-cr-rose">Banker Mode Off:</b> In scenarios with cross-resource demands, produces deadlocks requiring victim kill and restarts.
-          </li>
-        </ul>
+      {/* Editorial Key Insights Callout */}
+      <div className="plume-card rounded-2xl p-5 space-y-2.5">
+        <div className="flex items-center gap-2 text-indigo-400">
+          <Sparkles className="w-4 h-4" />
+          <h3 className="text-sm font-semibold text-white tracking-tight">
+            Key OS Policy Insights Observed
+          </h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1 text-xs text-slate-300">
+          <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+            <span className="font-semibold text-sky-400 block mb-1">SJF / SRTF Efficiency</span>
+            <p className="text-slate-400 leading-relaxed">
+              Dramatically minimizes average wait time and maximizes cluster throughput, but can starve longer research training jobs if aging rate is 0.
+            </p>
+          </div>
+          <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+            <span className="font-semibold text-emerald-400 block mb-1">FCFS with User Quotas</span>
+            <p className="text-slate-400 leading-relaxed">
+              Maximizes cohort fairness (Jain's index &gt; 0.95), preventing aggressive users from hoarding pooled GPUs.
+            </p>
+          </div>
+          <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+            <span className="font-semibold text-rose-400 block mb-1">Banker Algorithm Off</span>
+            <p className="text-slate-400 leading-relaxed">
+              Allows circular waiting on cross-resource demands (GPU vs Lic), triggering deadlock cycles and requiring victim job termination.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
