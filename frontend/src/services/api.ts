@@ -96,6 +96,11 @@ export interface LiveSubmitPayload {
   io?: number;
 }
 
+export interface LiveLimits {
+  limits: Record<'cpu' | 'mem' | 'duration' | 'gpu' | 'lic' | 'io' | 'rush_count' | 'rush_duration', { min: number; max: number }>;
+  scripts: { name: string; label: string }[];
+}
+
 export const api = {
   // System & cluster
   getHealth: () => request<{ status: string; version: string }>('/health'),
@@ -134,6 +139,7 @@ export const api = {
 
   // Live mode
   getLiveState: () => request<LiveStateSnapshot>('/live/state'),
+  getLiveLimits: () => request<LiveLimits>('/live/limits'),
   submitLiveJob: (data: LiveSubmitPayload) =>
     post<{ status: string; job_id: string }>('/live/jobs', data),
   injectLiveRush: (data: { count: number; role: string; script_name: string; duration: number }) =>
@@ -145,5 +151,5 @@ export const api = {
   killLiveJob: (jobId: string) =>
     post<{ status: string }>(`/live/jobs/${encodeURIComponent(jobId)}/kill`),
   restartLiveSession: () => post<{ status: string; session_id: string }>('/live/session/restart'),
-  saveLiveSession: () => post<{ status: string; run_id: string }>('/live/session/save'),
+  saveLiveSession: () => post<{ status: string; run_id: string; id: number }>('/live/session/save'),
 };

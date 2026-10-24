@@ -66,6 +66,8 @@ interface LabState {
   runSimulation: (profileName?: string, scenarioName?: string) => Promise<boolean>;
   /** Run the active scenario under the saved calendar schedule. */
   runScheduledSimulation: (scenarioName?: string) => Promise<boolean>;
+  /** Load a stored run (e.g. a saved live session) into the replay view. */
+  openSavedRun: (runId: string | number) => Promise<boolean>;
   stepForward: (delta?: number) => void;
   stepBackward: (delta?: number) => void;
   jumpToNextDeadlock: () => void;
@@ -268,6 +270,12 @@ export const useLabStore = create<LabState>((set, get) => {
       );
     },
 
+    openSavedRun: async (runId) => {
+      const ok = await loadRun(() => api.getRun(String(runId)), null);
+      if (ok) set({ mode: 'simulation', currentTab: 'overview' });
+      return ok;
+    },
+
     toggleCompareProfile: (name: string) => {
       const { compareProfileNames } = get();
       if (compareProfileNames.includes(name)) {
@@ -354,3 +362,8 @@ export const useLabStore = create<LabState>((set, get) => {
     },
   };
 });
+
+// Dev-only handle for debugging and the e2e scripts.
+if (import.meta.env.DEV) {
+  (window as unknown as { __labStore: typeof useLabStore }).__labStore = useLabStore;
+}

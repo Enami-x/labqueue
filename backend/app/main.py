@@ -5,6 +5,7 @@ app/main.py – FastAPI application entry point.
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,10 +15,23 @@ from app.api import profiles, workloads, runs, calendar, live
 from app.api.live import get_live_runner
 from fastapi import WebSocket, WebSocketDisconnect
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    _seed_db()
+    runner = get_live_runner()
+    await runner.start()
+    try:
+        yield
+    finally:
+        await runner.stop()
+
+
 app = FastAPI(
     title="LabQueue API",
     description="Policy-Based Job Scheduling for Shared Compute Labs",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -33,20 +47,6 @@ app.include_router(workloads.router)
 app.include_router(runs.router)
 app.include_router(calendar.router)
 app.include_router(live.router)
-
-
-@app.on_event("startup")
-async def on_startup():
-    init_db()
-    _seed_db()
-    runner = get_live_runner()
-    await runner.start()
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    runner = get_live_runner()
-    await runner.stop()
 
 
 def _seed_db():

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLabStore } from '../store/useLabStore';
-import { api } from '../services/api';
+import { api, LiveLimits } from '../services/api';
 import {
   Terminal,
   Play,
@@ -16,7 +16,13 @@ import {
 } from 'lucide-react';
 
 export const LiveConsolePage: React.FC = () => {
-  const { liveState, profiles, liveConnected } = useLabStore();
+  const { liveState, profiles, liveConnected, openSavedRun } = useLabStore();
+  const [limits, setLimits] = useState<LiveLimits | null>(null);
+  useEffect(() => {
+    api.getLiveLimits().then(setLimits).catch(() => setLimits(null));
+  }, []);
+  const lim = (k: keyof LiveLimits['limits'], fallback: { min: number; max: number }) => limits?.limits[k] ?? fallback;
+  const clamp = (v: number, r: { min: number; max: number }) => Math.min(r.max, Math.max(r.min, v));
 
   // Student submission form state
   const [userId, setUserId] = useState('student_alice');
@@ -26,6 +32,8 @@ export const LiveConsolePage: React.FC = () => {
   const [cpu, setCpu] = useState(1);
   const [mem, setMem] = useState(2);
   const [gpu, setGpu] = useState(0);
+  const [lic, setLic] = useState(0);
+  const [io, setIo] = useState(0);
 
   // Admin controls state
   const [targetProfile, setTargetProfile] = useState('practical_session');
@@ -49,6 +57,8 @@ export const LiveConsolePage: React.FC = () => {
         duration,
         script_name: scriptName,
         gpu,
+        lic,
+        io,
       });
       showMsg(`Job ${res.job_id} submitted to live dispatch queue!`);
     } catch (err: any) {
@@ -91,7 +101,8 @@ export const LiveConsolePage: React.FC = () => {
   const handleSaveSession = async () => {
     try {
       const res = await api.saveLiveSession();
-      showMsg(`Session saved as Run '${res.run_id}' for replay!`);
+      showMsg(`Session saved as run '${res.run_id}'. Opening the replay…`);
+      await openSavedRun(res.id);
     } catch (err: any) {
       showMsg(`Save error: ${err.message}`);
     }
@@ -115,7 +126,7 @@ export const LiveConsolePage: React.FC = () => {
         <div>
           <h1 className="text-xl font-bold uppercase tracking-wider text-white flex items-center gap-2">
             <Terminal className="w-5 h-5 text-cr-emerald" />
-            Live Process Lab Console (Stage 9 OS Subprocesses)
+            Live Process Lab Console
           </h1>
           <p className="text-xs text-slate-400 mt-1 font-sans">
             Spawns real OS Python child processes, applies dynamic preemption (via POSIX SIGSTOP/SIGCONT),
@@ -128,7 +139,7 @@ export const LiveConsolePage: React.FC = () => {
             onClick={handleSaveSession}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-cr-cyan/20 text-cr-cyan border border-cr-cyan/40 rounded-lg hover:bg-cr-cyan/30 transition"
           >
-            <Save className="w-3.5 h-3.5" /> <span>Save as Sim Run</span>
+            <Save className="w-3.5 h-3.5" /> <span>Save &amp; replay session</span>
           </button>
           <button
             onClick={handleRestartSession}
@@ -206,10 +217,10 @@ export const LiveConsolePage: React.FC = () => {
                 <input
                   type="number"
                   step="0.5"
-                  min="0.5"
-                  max="60"
+                  min={lim('duration', { min: 0.5, max: 300 }).min}
+                  max={lim('duration', { min: 0.5, max: 300 }).max}
                   value={duration}
-                  onChange={(e) => setDuration(parseFloat(e.target.value) || 4.0)}
+                  onChange={(e) => setDuration(clamp(parseFloat(e.target.value) || 4.0, lim('duration', { min: 0.5, max: 300 })))}
                   className="w-full bg-cr-card border border-cr-border rounded-lg px-2.5 py-1 text-white focus:outline-none"
                 />
               </div>
@@ -218,25 +229,45 @@ export const LiveConsolePage: React.FC = () => {
                 <label className="text-slate-400 block mb-1">Cores</label>
                 <input
                   type="number"
-                  min="1"
-                  max="8"
+                  min={1}
+                  max={lim('cpu', { min: 1, max: 16 }).max}
                   value={cpu}
-                  onChange={(e) => setCpu(parseInt(e.target.value) || 1)}
+                  onChange={(e) => setCpu(clamp(parseInt(e.target.value) || 1, lim('cpu', { min: 1, max: 16 })))}
                   className="w-full bg-cr-card border border-cr-border rounded-lg px-2.5 py-1 text-white focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="text-slate-400 block mb-1">GPU Claim</label>
+                <label className="text-slate-400 block mb-1">Memory (GB)</label>
                 <input
                   type="number"
-                  min="0"
-                  max="2"
-                  value={gpu}
-                  onChange={(e) => setGpu(parseInt(e.target.value) || 0)}
+                  min={1}
+                  max={lim('mem', { min: 1, max: 64 }).max}
+                  value={mem}
+                  onChange={(e) => setMem(clamp(parseInt(e.target.value) || 1, lim('mem', { min: 1, max: 64 })))}
                   className="w-full bg-cr-card border border-cr-border rounded-lg px-2.5 py-1 text-white focus:outline-none"
                 />
               </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                ['GPU claim', gpu, setGpu, 'gpu'],
+                ['License claim', lic, setLic, 'lic'],
+                ['I/O slot claim', io, setIo, 'io'],
+              ] as const).map(([label, value, setter, key]) => (
+                <div key={key}>
+                  <label className="text-slate-400 block mb-1">{label}</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={lim(key, { min: 0, max: 6 }).max}
+                    value={value}
+                    onChange={(e) => setter(clamp(parseInt(e.target.value) || 0, lim(key, { min: 0, max: 6 })))}
+                    className="w-full bg-cr-card border border-cr-border rounded-lg px-2.5 py-1 text-white focus:outline-none"
+                  />
+                </div>
+              ))}
             </div>
 
             <button
@@ -291,10 +322,10 @@ export const LiveConsolePage: React.FC = () => {
             <div className="flex items-center gap-3">
               <input
                 type="number"
-                min="1"
-                max="15"
+                min={1}
+                max={lim('rush_count', { min: 1, max: 20 }).max}
                 value={rushCount}
-                onChange={(e) => setRushCount(parseInt(e.target.value) || 5)}
+                onChange={(e) => setRushCount(clamp(parseInt(e.target.value) || 5, lim('rush_count', { min: 1, max: 20 })))}
                 className="w-20 bg-cr-surface border border-cr-border rounded-lg px-2 py-1 text-white focus:outline-none"
               />
               <span className="text-slate-400">concurrent undergraduate processes</span>
@@ -309,9 +340,12 @@ export const LiveConsolePage: React.FC = () => {
 
           {/* Information Notice */}
           <div className="p-2.5 bg-cr-surface border border-cr-border rounded-lg text-slate-400 text-[11px] font-sans">
-            <b>Preemption Behavior:</b> Switching to Round-Robin or Priority allows the scheduler to
-            suspend running worker processes via <code className="text-cr-cyan">psutil.Process.suspend()</code> and
-            resume them when quantum or priority permits.
+            <b>What live mode applies:</b> FCFS / SJF / Round-Robin / Priority ordering, the RR quantum
+            (1 profile minute = 1 second), priority and SRTF preemption for <code>preemptive</code> profiles
+            (honouring <code>preempt_by</code>), head-of-line blocking when backfill is off, quotas,
+            reservations, placement and Banker checks. Preempted processes are paused with
+            <code className="text-cr-cyan">psutil.Process.suspend()</code> and resumed later. Calendar slots
+            and reactive rules apply to simulation runs only.
           </div>
         </div>
       </div>

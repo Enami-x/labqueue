@@ -26,3 +26,10 @@ def single_node_cluster():
 def default_cluster():
     from engine.model import DEFAULT_CLUSTER
     return DEFAULT_CLUSTER
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _init_test_db():
+    """Create tables up front: some tests use TestClient(app) without running startup."""
+    from app.db import init_db
+    init_db()

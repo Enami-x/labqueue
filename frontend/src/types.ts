@@ -140,6 +140,8 @@ export interface RunMetrics {
   jobs_completed: number;
   total_jobs: number;
   by_role: Record<string, RoleMetrics>;
+  /** 's' for replays of saved live sessions; simulated runs are in minutes. */
+  time_unit?: 'min' | 's';
   time_series?: {
     t: number[];
     queue_len: number[];

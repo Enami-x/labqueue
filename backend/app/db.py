@@ -69,6 +69,7 @@ class BatchRecord(SQLModel, table=True):
     matrix: str = "{}"  # JSON: {scenario: {profile: metrics}}
     progress: int = 0
     total: int = 0
+    error: str = ""
     created_at: str = Field(default_factory=_utcnow_iso)
 
 
@@ -84,6 +85,23 @@ class CalendarRecord(SQLModel, table=True):
 
 def init_db() -> None:
     SQLModel.metadata.create_all(engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns() -> None:
+    """create_all() doesn't alter existing tables; add columns introduced later."""
+    from sqlalchemy import inspect, text
+
+    added = {"batchrecord": {"error": "VARCHAR NOT NULL DEFAULT ''"}}
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table, cols in added.items():
+            if not insp.has_table(table):
+                continue
+            existing = {c["name"] for c in insp.get_columns(table)}
+            for name, ddl in cols.items():
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
 
 
 def get_session():

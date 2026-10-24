@@ -217,13 +217,24 @@ def create_batch(
 
 
 def _run_batch(batch_id: int, workload_ids: List[int], profile_filter: dict, seed: int):
-    from sqlmodel import Session
+    try:
+        _run_batch_inner(batch_id, workload_ids, profile_filter, seed)
+    except Exception as e:  # e.g. a bad filter value: don't leave the batch "pending"
+        from app.db import engine as db_engine
+        with Session(db_engine) as session:
+            br = session.get(BatchRecord, batch_id)
+            if br:
+                br.status = "error"
+                br.error = f"{type(e).__name__}: {e}"
+                session.commit()
+
+
+def _run_batch_inner(batch_id: int, workload_ids: List[int], profile_filter: dict, seed: int):
     from app.db import engine as db_engine
+    from engine.model import BankerMode, PlacementKind, SchedulerKind
+    from engine.profiles import filter_profiles
 
     profiles = all_profiles()
-    # Apply filter
-    from engine.model import SchedulerKind, PlacementKind, BankerMode
-    from engine.profiles import filter_profiles
     fam = profile_filter.get("family")
     sch = SchedulerKind(profile_filter["scheduler"]) if "scheduler" in profile_filter else None
     pla = PlacementKind(profile_filter["placement"]) if "placement" in profile_filter else None
@@ -249,10 +260,12 @@ def _run_batch(batch_id: int, workload_ids: List[int], profile_filter: dict, see
     for wid, wl_data in workloads:
         wl_key = str(wid)
         matrix[wl_key] = {}
+        jobs = workload_from_dict(wl_data)
+        node_events = wl_data.get("node_events") or None
         for profile in profiles:
             try:
-                jobs = workload_from_dict(wl_data)
-                result = engine_run(DEFAULT_CLUSTER, jobs, profile, seed=seed, record_events=False)
+                result = engine_run(DEFAULT_CLUSTER, jobs, profile, seed=seed,
+                                    record_events=False, node_events=node_events)
                 matrix[wl_key][profile.name] = result.metrics
             except Exception as e:
                 matrix[wl_key][profile.name] = {"error": str(e)}
@@ -281,6 +294,7 @@ def get_batch(batch_id: int, session: Session = Depends(get_session)):
     return {
         "id": rec.id,
         "status": rec.status,
+        "error": rec.error or None,
         "progress": rec.progress,
         "total": rec.total,
         "matrix": json.loads(rec.matrix),
