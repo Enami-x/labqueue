@@ -185,3 +185,16 @@ class TestScheduleEngine:
                                     "conditions": [{"field": "min_slack", "op": "<", "value": 30}]}])
         result = run(DEFAULT_CLUSTER, jobs, schedule, seed=42)
         assert result.metrics["total_jobs"] == 40
+
+
+class TestEngineFailureIsReported:
+    def test_engine_crash_returns_readable_error(self, client, monkeypatch):
+        import app.api.runs as runs_api
+
+        def boom(*a, **k):
+            raise ValueError("Cannot go back in time: 28 < 30")
+
+        monkeypatch.setattr(runs_api, "engine_run", boom)
+        res = client.post("/api/runs", json={"scenario": "balanced_day", "profile_name": "workshop", "n_jobs": 10})
+        assert res.status_code == 500
+        assert "simulation engine failed running 'workshop'" in res.json()["detail"]

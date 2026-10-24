@@ -1,8 +1,24 @@
 import React, { useState } from 'react';
 import { useLabStore } from '../store/useLabStore';
 import { api, ApiError } from '../services/api';
-import { Profile, SchedulerKind, PlacementKind, BankerMode, Role } from '../types';
-import { Zap, Play, CheckCircle2, AlertTriangle, Save } from 'lucide-react';
+import { BankerMode, PlacementKind, Profile, Role, SchedulerKind } from '../types';
+import { Save } from 'lucide-react';
+import { BusyIcon, Field, PageHeader, SectionHeading } from '../components/ui';
+import { toast } from '../store/useFeedback';
+
+const SCHEDULERS: { key: SchedulerKind; hint: string }[] = [
+  { key: 'FCFS', hint: 'Arrival order, strict head-of-line' },
+  { key: 'SJF', hint: 'Shortest remaining burst first' },
+  { key: 'RR', hint: 'Time slices of a fixed quantum' },
+  { key: 'PRIORITY', hint: 'Weighted score of role, deadline, wait, size' },
+];
+const ROLES: Role[] = ['faculty', 'exam', 'demo', 'phd', 'ug', 'guest'];
+const WEIGHTS = [
+  ['role', 'Role'],
+  ['deadline', 'Deadline urgency'],
+  ['wait', 'Time waited'],
+  ['size', 'Smallness'],
+] as const;
 
 export const ProfileBuilderPage: React.FC = () => {
   const { runSimulation, refreshProfiles, setTab, profiles } = useLabStore();
@@ -10,387 +26,285 @@ export const ProfileBuilderPage: React.FC = () => {
   const [name, setName] = useState('custom_fair_sjf');
   const [family, setFamily] = useState('custom');
   const [scheduler, setScheduler] = useState<SchedulerKind>('SJF');
-  const [quantum, setQuantum] = useState<number>(4);
+  const [quantum, setQuantum] = useState(4);
   const [preemptive, setPreemptive] = useState(false);
-  const [agingRate, setAgingRate] = useState<number>(0.05);
-
-  const [wRole, setWRole] = useState<number>(0.4);
-  const [wDeadline, setWDeadline] = useState<number>(0.3);
-  const [wWait, setWWait] = useState<number>(0.2);
-  const [wSize, setWSize] = useState<number>(0.1);
-
+  const [preemptBy, setPreemptBy] = useState<Role[]>(['faculty', 'exam']);
+  const [agingRate, setAgingRate] = useState(0.05);
+  const [weights, setWeights] = useState({ role: 0.4, deadline: 0.3, wait: 0.2, size: 0.1 });
   const [placement, setPlacement] = useState<PlacementKind>('best');
   const [banker, setBanker] = useState<BankerMode>('strict');
-  const [quota, setQuota] = useState<number>(2);
   const [enableQuota, setEnableQuota] = useState(true);
-
+  const [quota, setQuota] = useState(2);
   const [reservedRole, setReservedRole] = useState<Role | ''>('');
-  const [reservedPct, setReservedPct] = useState<number>(0.2);
+  const [reservedPct, setReservedPct] = useState(0.2);
   const [backfill, setBackfill] = useState(true);
 
-  const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
-  const [serverErrors, setServerErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [serverErrors, setServerErrors] = useState<string[]>([]);
 
-  // Client-side validation
-  const errors: string[] = [];
   const normalizedName = name.trim().toLowerCase().replace(/\s+/g, '_');
-  if (!normalizedName) errors.push('Profile name is required');
-  else if (profiles.some((p) => p.name === normalizedName)) errors.push(`A profile named '${normalizedName}' already exists`);
-  if (scheduler === 'RR' && (!quantum || quantum <= 0)) errors.push('RR requires quantum > 0');
-  if (scheduler === 'FCFS' && backfill) errors.push('FCFS must have backfill disabled');
-  if (reservedRole === '' && reservedPct > 0) {
-    // Ok if no reserved role selected
-  }
+  const nameErrors: string[] = [];
+  if (!normalizedName) nameErrors.push('Profile name is required');
+  else if (profiles.some((p) => p.name === normalizedName)) nameErrors.push(`A profile named '${normalizedName}' already exists`);
 
-  const handleSaveAndTest = async () => {
-    if (errors.length > 0) return;
+  const errors = [...nameErrors];
+  if (scheduler === 'RR' && !(quantum >= 1)) errors.push('Round-Robin needs a quantum of at least 1 minute');
+  if (scheduler === 'PRIORITY' && Object.values(weights).every((w) => w === 0)) errors.push('Priority weights must not all be zero');
+  const canPreempt = scheduler === 'SJF' || scheduler === 'PRIORITY';
+
+  const buildProfile = (): Profile => ({
+    name: normalizedName,
+    family,
+    scheduler,
+    quantum: scheduler === 'RR' ? quantum : null,
+    preemptive: canPreempt && preemptive,
+    aging_rate: agingRate,
+    weights: scheduler === 'PRIORITY' ? weights : null,
+    placement,
+    banker,
+    quota_per_user: enableQuota ? quota : null,
+    reserved_role: reservedRole || null,
+    reserved_pct: reservedRole ? reservedPct : 0,
+    preempt_by: scheduler === 'PRIORITY' && preemptive ? preemptBy : [],
+    backfill: scheduler === 'FCFS' ? false : backfill,
+  });
+
+  const handleSave = async () => {
+    if (errors.length) return;
     setSaving(true);
-    setStatusMsg(null);
-
-    const profileData: Profile = {
-      name: normalizedName,
-      family,
-      scheduler,
-      quantum: scheduler === 'RR' ? quantum : null,
-      preemptive,
-      aging_rate: agingRate,
-      weights:
-        scheduler === 'PRIORITY'
-          ? { role: wRole, deadline: wDeadline, wait: wWait, size: wSize }
-          : null,
-      placement,
-      banker,
-      quota_per_user: enableQuota ? quota : null,
-      reserved_role: reservedRole ? (reservedRole as Role) : null,
-      reserved_pct: reservedRole ? reservedPct : 0.0,
-      preempt_by: preemptive ? ['faculty', 'exam'] : [],
-      backfill: scheduler === 'FCFS' ? false : backfill,
-    };
-
     setServerErrors([]);
     try {
-      const saved = await api.createProfile(profileData);
-      // Make the new profile visible in Profiles and every profile picker.
+      const saved = await api.createProfile(buildProfile());
       await refreshProfiles();
-      setStatusMsg({ type: 'ok', text: `Profile '${saved.name}' saved. Running it on the active scenario…` });
+      toast.success(`Saved profile ${saved.name}`, ['Running it on the active scenario…']);
       if (await runSimulation(saved.name)) setTab('overview');
-    } catch (e: any) {
-      const fieldMsgs = e instanceof ApiError ? e.fieldErrors.map((f) => f.msg) : [];
-      setServerErrors(fieldMsgs);
-      setStatusMsg({ type: 'err', text: fieldMsgs.length ? 'The backend rejected this profile:' : e.message || 'Failed to save custom profile' });
+    } catch (e) {
+      const msgs = e instanceof ApiError && e.fieldErrors.length ? e.fieldErrors.map((f) => f.msg) : [(e as Error).message];
+      setServerErrors(msgs);
+      toast.error('Profile not saved', e);
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="flex-1 p-6 max-w-[1200px] w-full mx-auto space-y-6 overflow-y-auto font-mono text-xs">
-      {/* Header */}
-      <div className="pb-4 border-b border-cr-border">
-        <h1 className="text-xl font-bold uppercase tracking-wider text-white flex items-center gap-2">
-          <Zap className="w-5 h-5 text-cr-cyan" />
-          Interactive Custom Policy Builder
-        </h1>
-        <p className="text-xs text-slate-400 mt-1 font-sans">
-          Synthesize new scheduling policies with customized aging rates, priority weight vectors,
-          and multi-resource safety invariants.
-        </p>
-      </div>
+    <div>
+      <PageHeader
+        kicker="Custom policy"
+        title={
+          <>
+            Profile builder<span>.</span>
+          </>
+        }
+        description="Combine a CPU scheduler, a memory placement strategy, a Banker's-algorithm mode, and fairness controls into a new profile. Saving validates it on the server, adds it to every profile picker, and runs it on the active scenario."
+        actions={
+          <button className="primary-button" onClick={handleSave} disabled={saving || errors.length > 0}>
+            <BusyIcon busy={saving} icon={<Save />} />
+            {saving ? 'Saving…' : 'Save profile and run'}
+          </button>
+        }
+      />
 
-      {statusMsg && (
-        <div
-          className={`p-3 rounded-xl border flex items-center gap-2 text-xs font-bold ${
-            statusMsg.type === 'ok'
-              ? 'bg-cr-emerald/20 text-cr-emerald border-cr-emerald/40 cr-glow-emerald'
-              : 'bg-cr-rose/20 text-cr-rose border-cr-rose/40'
-          }`}
-        >
-          {statusMsg.type === 'ok' ? (
-            <CheckCircle2 className="w-4 h-4" />
-          ) : (
-            <AlertTriangle className="w-4 h-4" />
-          )}
-          <span>{statusMsg.text}</span>
-          {serverErrors.length > 0 && (
-            <ul className="list-disc pl-5">
-              {serverErrors.map((m) => <li key={m}>{m}</li>)}
+      {(errors.length > 0 || serverErrors.length > 0) && (
+        <div className="notice" role="alert" style={{ marginBottom: 20 }}>
+          <div>
+            <b>{serverErrors.length ? 'The server rejected this profile' : 'Fix before saving'}</b>
+            <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+              {[...errors, ...serverErrors].map((m) => (
+                <li key={m}>{m}</li>
+              ))}
             </ul>
-          )}
+          </div>
         </div>
       )}
 
-      {/* Form Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Basic Identity */}
-        <div className="bg-cr-surface p-4 rounded-xl border border-cr-border space-y-3">
-          <h2 className="text-sm font-bold text-white uppercase border-b border-cr-border pb-2">
-            1. Policy Identity
-          </h2>
-
-          <div>
-            <label className="text-slate-400 block mb-1">Profile Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full bg-cr-card border border-cr-border rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cr-cyan"
-            />
-          </div>
-
-          <div>
-            <label className="text-slate-400 block mb-1">Policy Family / Category</label>
-            <select
-              value={family}
-              onChange={(e) => setFamily(e.target.value)}
-              className="w-full bg-cr-card border border-cr-border rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none"
-            >
-              <option value="custom">custom</option>
-              <option value="academic">academic</option>
-              <option value="research">research</option>
-              <option value="deadlines">deadlines</option>
-              <option value="fairness">fairness</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Algorithm Selection */}
-        <div className="bg-cr-surface p-4 rounded-xl border border-cr-border space-y-3">
-          <h2 className="text-sm font-bold text-white uppercase border-b border-cr-border pb-2">
-            2. Core Scheduling Algorithm
-          </h2>
-
-          <div>
-            <label className="text-slate-400 block mb-1">Algorithm Strategy</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['FCFS', 'SJF', 'RR', 'PRIORITY'] as SchedulerKind[]).map((sk) => (
-                <button
-                  key={sk}
-                  type="button"
-                  onClick={() => {
-                    setScheduler(sk);
-                    if (sk === 'FCFS') setBackfill(false);
-                  }}
-                  className={`py-2 px-3 rounded-lg border text-xs font-bold transition ${
-                    scheduler === sk
-                      ? 'bg-cr-cyan/20 text-cr-cyan border-cr-cyan/60 cr-glow-cyan'
-                      : 'bg-cr-card text-slate-400 border-cr-border hover:text-white'
-                  }`}
-                >
-                  {sk}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {scheduler === 'RR' && (
-            <div>
-              <label className="text-slate-400 block mb-1">Round-Robin Quantum (minutes)</label>
-              <input
-                type="number"
-                min={1}
-                max={60}
-                value={quantum}
-                onChange={(e) => setQuantum(parseInt(e.target.value) || 4)}
-                className="w-full bg-cr-card border border-cr-border rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cr-cyan"
-              />
-            </div>
-          )}
-
-          <div>
-            <div className="flex justify-between text-slate-400 mb-1">
-              <span>Aging Rate (Anti-Starvation Bonus)</span>
-              <span className="text-cr-emerald font-bold">+{agingRate}/m</span>
-            </div>
-            <input
-              type="range"
-              min={0.0}
-              max={0.2}
-              step={0.01}
-              value={agingRate}
-              onChange={(e) => setAgingRate(parseFloat(e.target.value))}
-              aria-label="Aging Rate Slider"
-              className="w-full accent-cr-emerald"
-            />
-          </div>
-        </div>
-
-        {/* Priority Scoring Knobs (if Priority) */}
-        {scheduler === 'PRIORITY' && (
-          <div className="md:col-span-2 bg-cr-surface p-4 rounded-xl border border-cr-border space-y-3">
-            <h2 className="text-sm font-bold text-white uppercase border-b border-cr-border pb-2">
-              3. Priority Multi-Objective Weights
-            </h2>
-
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-              <div>
-                <label className="text-slate-400 block mb-1">Role Weight: {wRole.toFixed(2)}</label>
+      <div className="grid-2">
+        <section className="panel" aria-labelledby="b-identity">
+          <SectionHeading id="b-identity" kicker="Step 1" title="Identity" />
+          <div className="panel-body form-grid">
+            <Field label="Profile name" hint="Lowercase; spaces become underscores" errors={nameErrors}>
+              {(id, d) => (
                 <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={wRole}
-                  onChange={(e) => setWRole(parseFloat(e.target.value))}
-                  aria-label="Role Weight Slider"
-                  className="w-full accent-cr-cyan"
+                  id={id}
+                  aria-describedby={d}
+                  aria-invalid={nameErrors.length > 0}
+                  className={`control mono ${nameErrors.length ? 'invalid' : ''}`}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                 />
+              )}
+            </Field>
+            <Field label="Family">
+              {(id) => (
+                <select id={id} className="control" value={family} onChange={(e) => setFamily(e.target.value)}>
+                  {['custom', 'academic', 'research', 'events', 'load', 'fairness'].map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Field>
+          </div>
+        </section>
+
+        <section className="panel" aria-labelledby="b-sched">
+          <SectionHeading id="b-sched" kicker="Step 2" title="CPU scheduling" />
+          <div className="panel-body stack" style={{ gap: 16 }}>
+            <div className="field">
+              <span className="field-label" id="sched-label">
+                Algorithm
+              </span>
+              <div className="segmented" role="group" aria-labelledby="sched-label">
+                {SCHEDULERS.map((s) => (
+                  <button key={s.key} type="button" aria-pressed={scheduler === s.key} title={s.hint} onClick={() => setScheduler(s.key)}>
+                    {s.key}
+                  </button>
+                ))}
               </div>
-              <div>
-                <label className="text-slate-400 block mb-1">Deadline Urgency: {wDeadline.toFixed(2)}</label>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={wDeadline}
-                  onChange={(e) => setWDeadline(parseFloat(e.target.value))}
-                  aria-label="Deadline Weight Slider"
-                  className="w-full accent-cr-amber"
-                />
-              </div>
-              <div>
-                <label className="text-slate-400 block mb-1">Wait Time: {wWait.toFixed(2)}</label>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={wWait}
-                  onChange={(e) => setWWait(parseFloat(e.target.value))}
-                  aria-label="Wait Time Slider"
-                  className="w-full accent-cr-emerald"
-                />
-              </div>
-              <div>
-                <label className="text-slate-400 block mb-1">Size/Smallness: {wSize.toFixed(2)}</label>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={wSize}
-                  onChange={(e) => setWSize(parseFloat(e.target.value))}
-                  aria-label="Size Weight Slider"
-                  className="w-full accent-purple-400"
-                />
-              </div>
+              <span className="field-hint">{SCHEDULERS.find((s) => s.key === scheduler)?.hint}</span>
             </div>
-          </div>
-        )}
 
-        {/* Resource Allocation & Safety */}
-        <div className="bg-cr-surface p-4 rounded-xl border border-cr-border space-y-3">
-          <h2 className="text-sm font-bold text-white uppercase border-b border-cr-border pb-2">
-            4. Placement & Banker Safety
-          </h2>
+            {scheduler === 'RR' && (
+              <Field label="Quantum (minutes)">
+                {(id) => (
+                  <input id={id} type="number" min={1} max={60} className="control mono" value={quantum} onChange={(e) => setQuantum(parseInt(e.target.value, 10) || 0)} />
+                )}
+              </Field>
+            )}
 
-          <div>
-            <label className="text-slate-400 block mb-1">Memory Placement Strategy</label>
-            <select
-              value={placement}
-              onChange={(e) => setPlacement(e.target.value as PlacementKind)}
-              className="w-full bg-cr-card border border-cr-border rounded-lg px-3 py-1.5 text-slate-200 capitalize focus:outline-none"
-            >
-              <option value="best">Best Fit (Minimizes Leftover)</option>
-              <option value="first">First Fit (Lowest Node ID)</option>
-              <option value="worst">Worst Fit (Spreads Load)</option>
-            </select>
-          </div>
+            {canPreempt && (
+              <label className="check">
+                <input type="checkbox" checked={preemptive} onChange={(e) => setPreemptive(e.target.checked)} />
+                {scheduler === 'SJF' ? 'Preemptive (SRTF): a shorter job can displace a running one' : 'Preemptive: a higher-scoring job can displace a running one'}
+              </label>
+            )}
 
-          <div>
-            <label className="text-slate-400 block mb-1">Banker Deadlock Safety Mode</label>
-            <select
-              value={banker}
-              onChange={(e) => setBanker(e.target.value as BankerMode)}
-              className="w-full bg-cr-card border border-cr-border rounded-lg px-3 py-1.5 text-slate-200 capitalize focus:outline-none"
-            >
-              <option value="strict">Strict (Textbook Banker's Avoidance)</option>
-              <option value="lenient">Lenient (Safety Check on GPUs only)</option>
-              <option value="off">Off (Allows Deadlock & Uses Recovery)</option>
-            </select>
-          </div>
-        </div>
+            {scheduler === 'PRIORITY' && preemptive && (
+              <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
+                <legend className="field-label" style={{ marginBottom: 6 }}>
+                  Roles allowed to preempt (none checked = any role)
+                </legend>
+                <div className="flex flex-wrap gap-3">
+                  {ROLES.map((r) => (
+                    <label key={r} className="check">
+                      <input
+                        type="checkbox"
+                        checked={preemptBy.includes(r)}
+                        onChange={(e) => setPreemptBy((cur) => (e.target.checked ? [...cur, r] : cur.filter((x) => x !== r)))}
+                      />
+                      {r}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
 
-        {/* Quotas & Reservations */}
-        <div className="bg-cr-surface p-4 rounded-xl border border-cr-border space-y-3">
-          <h2 className="text-sm font-bold text-white uppercase border-b border-cr-border pb-2">
-            5. Fairness Quotas & Reservations
-          </h2>
+            <Field label={`Aging rate: +${agingRate.toFixed(2)} per minute waited`} hint="Raises a waiting job's priority over time to prevent starvation">
+              {(id, d) => (
+                <input id={id} aria-describedby={d} type="range" min={0} max={0.2} step={0.01} value={agingRate} onChange={(e) => setAgingRate(parseFloat(e.target.value))} />
+              )}
+            </Field>
 
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-slate-400">Concurrent Jobs Per User Quota</label>
-              <input
-                type="checkbox"
-                checked={enableQuota}
-                onChange={(e) => setEnableQuota(e.target.checked)}
-                className="accent-cr-cyan"
-              />
-            </div>
-            {enableQuota && (
-              <input
-                type="number"
-                min={1}
-                max={10}
-                value={quota}
-                onChange={(e) => setQuota(parseInt(e.target.value) || 2)}
-                className="w-full bg-cr-card border border-cr-border rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-cr-cyan"
-              />
+            {scheduler !== 'FCFS' ? (
+              <label className="check">
+                <input type="checkbox" checked={backfill} onChange={(e) => setBackfill(e.target.checked)} />
+                Backfill: let smaller jobs start when the head of the queue doesn't fit
+              </label>
+            ) : (
+              <p className="help">FCFS always uses strict head-of-line order (no backfill).</p>
             )}
           </div>
+        </section>
 
-          <div>
-            <label className="text-slate-400 block mb-1">Role Reservation (Soft)</label>
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                value={reservedRole}
-                onChange={(e) => setReservedRole(e.target.value as Role)}
-                className="bg-cr-card border border-cr-border rounded-lg px-2 py-1.5 text-slate-200 capitalize focus:outline-none"
-              >
-                <option value="">None</option>
-                <option value="exam">Exam</option>
-                <option value="demo">Demo</option>
-                <option value="faculty">Faculty</option>
-                <option value="phd">PhD</option>
-              </select>
+        {scheduler === 'PRIORITY' && (
+          <section className="panel" aria-labelledby="b-weights" style={{ gridColumn: '1 / -1' }}>
+            <SectionHeading id="b-weights" kicker="Step 2b" title="Priority weights" />
+            <div className="panel-body form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+              {WEIGHTS.map(([key, label]) => (
+                <Field key={key} label={`${label}: ${weights[key].toFixed(2)}`}>
+                  {(id) => (
+                    <input
+                      id={id}
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={weights[key]}
+                      onChange={(e) => setWeights((w) => ({ ...w, [key]: parseFloat(e.target.value) }))}
+                    />
+                  )}
+                </Field>
+              ))}
+            </div>
+          </section>
+        )}
 
-              <select
-                value={reservedPct}
-                onChange={(e) => setReservedPct(parseFloat(e.target.value))}
-                disabled={!reservedRole}
-                className="bg-cr-card border border-cr-border rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none disabled:opacity-40"
-              >
-                <option value={0.2}>20% Nodes</option>
-                <option value={0.3}>30% Nodes</option>
-                <option value={0.5}>50% Nodes</option>
-              </select>
+        <section className="panel" aria-labelledby="b-mem">
+          <SectionHeading id="b-mem" kicker="Step 3" title="Placement and deadlock safety" />
+          <div className="panel-body form-grid" style={{ gridTemplateColumns: '1fr' }}>
+            <Field label="Memory placement">
+              {(id) => (
+                <select id={id} className="control" value={placement} onChange={(e) => setPlacement(e.target.value as PlacementKind)}>
+                  <option value="first">First fit: lowest node id that fits</option>
+                  <option value="best">Best fit: node with the least memory left over</option>
+                  <option value="worst">Worst fit: node with the most memory left over</option>
+                </select>
+              )}
+            </Field>
+            <Field label="Banker's algorithm">
+              {(id) => (
+                <select id={id} className="control" value={banker} onChange={(e) => setBanker(e.target.value as BankerMode)}>
+                  <option value="strict">Strict: every pooled request must keep the state safe</option>
+                  <option value="lenient">Lenient: only GPU requests are safety-checked</option>
+                  <option value="off">Off: grant if available; detect and recover deadlocks</option>
+                </select>
+              )}
+            </Field>
+          </div>
+        </section>
+
+        <section className="panel" aria-labelledby="b-fair">
+          <SectionHeading id="b-fair" kicker="Step 4" title="Fairness controls" />
+          <div className="panel-body stack" style={{ gap: 16 }}>
+            <label className="check">
+              <input type="checkbox" checked={enableQuota} onChange={(e) => setEnableQuota(e.target.checked)} />
+              Limit concurrent jobs per user
+            </label>
+            {enableQuota && (
+              <Field label="Max running jobs per user">
+                {(id) => (
+                  <input id={id} type="number" min={1} max={10} className="control mono" value={quota} onChange={(e) => setQuota(Math.max(1, parseInt(e.target.value, 10) || 1))} />
+                )}
+              </Field>
+            )}
+            <div className="form-grid">
+              <Field label="Reserve nodes for role" hint="Soft: others may use them when that role isn't waiting">
+                {(id, d) => (
+                  <select id={id} aria-describedby={d} className="control" value={reservedRole} onChange={(e) => setReservedRole(e.target.value as Role | '')}>
+                    <option value="">No reservation</option>
+                    {ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+              <Field label="Share of nodes">
+                {(id) => (
+                  <select id={id} className="control" disabled={!reservedRole} value={reservedPct} onChange={(e) => setReservedPct(parseFloat(e.target.value))}>
+                    {[0.2, 0.3, 0.5].map((v) => (
+                      <option key={v} value={v}>
+                        {Math.round(v * 100)}%
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Validation Errors */}
-      {errors.length > 0 && (
-        <div className="p-3 bg-cr-rose/15 border border-cr-rose/40 rounded-xl space-y-1 text-cr-rose font-bold">
-          {errors.map((err, idx) => (
-            <div key={idx} className="flex items-center gap-1.5">
-              <span>✕</span> <span>{err}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Action Footer */}
-      <div className="pt-2">
-        <button
-          onClick={handleSaveAndTest}
-          disabled={saving || errors.length > 0}
-          className="flex items-center justify-center gap-2 w-full py-3 bg-cr-cyan/20 hover:bg-cr-cyan/30 text-cr-cyan border border-cr-cyan/50 rounded-xl font-bold uppercase tracking-wider text-sm cr-glow-cyan transition disabled:opacity-50"
-        >
-          <Save className="w-4 h-4" />
-          <span>{saving ? 'Validating & Persisting...' : 'Save Profile & Simulate in Control Room'}</span>
-        </button>
+        </section>
       </div>
     </div>
   );

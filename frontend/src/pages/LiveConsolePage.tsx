@@ -1,421 +1,409 @@
 import React, { useEffect, useState } from 'react';
 import { useLabStore } from '../store/useLabStore';
 import { api, LiveLimits } from '../services/api';
-import {
-  Terminal,
-  Play,
-  Flame,
-  Radio,
-  PowerOff,
-  RotateCcw,
-  Save,
-  CheckCircle2,
-  Trash2,
-  Cpu,
-  Layers,
-} from 'lucide-react';
+import { Cpu, Flame, Info, RotateCcw, Save, Send, Trash2 } from 'lucide-react';
+import { ProfilePicker } from '../components/ProfilePicker';
+import { BusyIcon, EmptyState, Field, PageHeader, SectionHeading } from '../components/ui';
+import { confirmAction, toast } from '../store/useFeedback';
+import { fmtDuration, profileLabel, ROLE_LABEL } from '../lib/format';
+
+type LimitKey = keyof LiveLimits['limits'];
+const FALLBACK: LiveLimits['limits'] = {
+  cpu: { min: 1, max: 16 },
+  mem: { min: 1, max: 64 },
+  duration: { min: 0.5, max: 300 },
+  gpu: { min: 0, max: 6 },
+  lic: { min: 0, max: 4 },
+  io: { min: 0, max: 5 },
+  rush_count: { min: 1, max: 20 },
+  rush_duration: { min: 0.5, max: 60 },
+};
+const ROLES = ['ug', 'phd', 'faculty', 'exam', 'demo', 'guest'];
+const KINDS = ['training', 'preprocess', 'inference', 'assignment', 'demo'];
+
+const NumberField: React.FC<{
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  range: { min: number; max: number };
+  step?: number;
+  float?: boolean;
+}> = ({ label, value, onChange, range, step = 1, float }) => (
+  <Field label={label} hint={`${range.min}–${range.max}`}>
+    {(id, d) => (
+      <input
+        id={id}
+        aria-describedby={d}
+        type="number"
+        className="control mono"
+        min={range.min}
+        max={range.max}
+        step={step}
+        value={value}
+        onChange={(e) => {
+          const raw = float ? parseFloat(e.target.value) : parseInt(e.target.value, 10);
+          onChange(Number.isFinite(raw) ? Math.min(range.max, Math.max(range.min, raw)) : range.min);
+        }}
+      />
+    )}
+  </Field>
+);
 
 export const LiveConsolePage: React.FC = () => {
-  const { liveState, profiles, liveConnected, openSavedRun } = useLabStore();
+  const { liveState, liveLink, openSavedRun, setSelectedJobId } = useLabStore();
   const [limits, setLimits] = useState<LiveLimits | null>(null);
-  useEffect(() => {
-    api.getLiveLimits().then(setLimits).catch(() => setLimits(null));
-  }, []);
-  const lim = (k: keyof LiveLimits['limits'], fallback: { min: number; max: number }) => limits?.limits[k] ?? fallback;
-  const clamp = (v: number, r: { min: number; max: number }) => Math.min(r.max, Math.max(r.min, v));
+  const lim = (k: LimitKey) => limits?.limits[k] ?? FALLBACK[k];
 
-  // Student submission form state
+  useEffect(() => {
+    api.getLiveLimits().then(setLimits).catch((e) => toast.error('Could not load submission limits', e));
+  }, []);
+
+  // Job submission
   const [userId, setUserId] = useState('student_alice');
   const [role, setRole] = useState('ug');
+  const [kind, setKind] = useState('training');
   const [scriptName, setScriptName] = useState('cpu_burn.py');
-  const [duration, setDuration] = useState(4.0);
+  const [duration, setDuration] = useState(4);
   const [cpu, setCpu] = useState(1);
   const [mem, setMem] = useState(2);
   const [gpu, setGpu] = useState(0);
   const [lic, setLic] = useState(0);
   const [io, setIo] = useState(0);
 
-  // Admin controls state
+  // Admin controls
   const [targetProfile, setTargetProfile] = useState('practical_session');
   const [rushCount, setRushCount] = useState(5);
-  const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const [rushRole, setRushRole] = useState('ug');
+  const [rushDuration, setRushDuration] = useState(5);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  const showMsg = (msg: string) => {
-    setActionMsg(msg);
-    setTimeout(() => setActionMsg(null), 3500);
+  useEffect(() => {
+    if (liveState?.profile) setTargetProfile((cur) => (cur === 'practical_session' ? liveState.profile : cur));
+  }, [liveState?.profile]);
+
+  const run = async (key: string, fn: () => Promise<void>, failTitle: string) => {
+    setBusy(key);
+    try {
+      await fn();
+    } catch (e) {
+      toast.error(failTitle, e);
+    } finally {
+      setBusy(null);
+    }
   };
 
-  const handleStudentSubmit = async (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const res = await api.submitLiveJob({
-        user_id: userId,
-        role,
-        kind: 'training',
-        cpu,
-        mem,
-        duration,
-        script_name: scriptName,
-        gpu,
-        lic,
-        io,
-      });
-      showMsg(`Job ${res.job_id} submitted to live dispatch queue!`);
-    } catch (err: any) {
-      showMsg(`Submission error: ${err.message}`);
-    }
+    run(
+      'submit',
+      async () => {
+        const res = await api.submitLiveJob({ user_id: userId, role, kind, cpu, mem, duration, script_name: scriptName, gpu, lic, io });
+        toast.success(`Submitted ${res.job_id}`);
+      },
+      'Job not submitted',
+    );
   };
 
-  const handleInjectRush = async () => {
-    try {
-      const res = await api.injectLiveRush({
-        count: rushCount,
-        role: 'ug',
-        script_name: 'matrix_mult.py',
-        duration: 5.0,
-      });
-      showMsg(`Injected rush of ${res.job_ids.length} jobs concurrently!`);
-    } catch (err: any) {
-      showMsg(`Rush error: ${err.message}`);
-    }
+  const rush = () =>
+    run(
+      'rush',
+      async () => {
+        const res = await api.injectLiveRush({ count: rushCount, role: rushRole, script_name: 'matrix_mult.py', duration: rushDuration });
+        toast.success(`Injected ${res.job_ids.length} jobs`);
+      },
+      'Rush not injected',
+    );
+
+  const applyPolicy = () =>
+    run(
+      'policy',
+      async () => {
+        await api.switchLiveProfile(targetProfile);
+        toast.success(`Live scheduler now uses ${profileLabel(targetProfile)}`);
+      },
+      'Policy not switched',
+    );
+
+  const reset = async () => {
+    const ok = await confirmAction({
+      title: 'Reset the live session?',
+      body: `This kills every running and suspended process (${liveState?.counts.running ?? 0} running, ${
+        liveState?.counts.suspended ?? 0
+      } suspended), clears all queues and starts a new session with the default policy.`,
+      confirmLabel: 'Reset session',
+      danger: true,
+    });
+    if (!ok) return;
+    run(
+      'reset',
+      async () => {
+        const res = await api.restartLiveSession();
+        toast.success(`New session ${res.session_id}`);
+      },
+      'Session not reset',
+    );
   };
 
-  const handleSwitchProfile = async () => {
-    try {
-      await api.switchLiveProfile(targetProfile);
-      showMsg(`Live scheduler policy hot-switched to '${targetProfile}'!`);
-    } catch (err: any) {
-      showMsg(`Switch error: ${err.message}`);
-    }
+  const save = () =>
+    run(
+      'save',
+      async () => {
+        const res = await api.saveLiveSession();
+        toast.success(`Saved as run ${res.run_id}`, ['Opening the replay on Overview…']);
+        await openSavedRun(res.id);
+      },
+      'Session not saved',
+    );
+
+  const kill = async (jid: string, state: string) => {
+    const ok = await confirmAction({
+      title: `Kill ${jid}?`,
+      body: `The ${state} job is terminated and counted as failed. Its CPU, memory and pooled resources are released.`,
+      confirmLabel: 'Kill job',
+      danger: true,
+    });
+    if (!ok) return;
+    run(
+      `kill-${jid}`,
+      async () => {
+        await api.killLiveJob(jid);
+        toast.success(`Killed ${jid}`);
+      },
+      `Could not kill ${jid}`,
+    );
   };
 
-  const handleRestartSession = async () => {
-    try {
-      await api.restartLiveSession();
-      showMsg('Live lab session reset with clean state!');
-    } catch (err: any) {
-      showMsg(`Reset error: ${err.message}`);
-    }
-  };
-
-  const handleSaveSession = async () => {
-    try {
-      const res = await api.saveLiveSession();
-      showMsg(`Session saved as run '${res.run_id}'. Opening the replay…`);
-      await openSavedRun(res.id);
-    } catch (err: any) {
-      showMsg(`Save error: ${err.message}`);
-    }
-  };
-
-  const handleKillJob = async (jid: string) => {
-    try {
-      await api.killLiveJob(jid);
-      showMsg(`Terminated job ${jid}`);
-    } catch (err: any) {
-      showMsg(`Kill error: ${err.message}`);
-    }
-  };
-
-  const runningJobs = liveState?.running_jobs || [];
+  const running = liveState?.running_jobs || [];
+  const waiting = liveState?.ready_queue || [];
+  const nodeName = (id: number) => liveState?.nodes.find((n) => n.id === id)?.name ?? `node ${id}`;
+  const policy = liveState?.policy;
 
   return (
-    <div className="flex-1 p-6 max-w-[1400px] w-full mx-auto space-y-6 overflow-y-auto font-mono text-xs">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-cr-border">
-        <div>
-          <h1 className="text-xl font-bold uppercase tracking-wider text-white flex items-center gap-2">
-            <Terminal className="w-5 h-5 text-cr-emerald" />
-            Live Process Lab Console
-          </h1>
-          <p className="text-xs text-slate-400 mt-1 font-sans">
-            Spawns real OS Python child processes, applies dynamic preemption (via POSIX SIGSTOP/SIGCONT),
-            and performs live Banker's avoidance on pooled resources.
-          </p>
-        </div>
+    <div>
+      <PageHeader
+        kicker={`Real OS processes · ${liveLink === 'open' ? 'connected' : liveLink}`}
+        title={
+          <>
+            Live console<span>.</span>
+          </>
+        }
+        description="Submit real Python child processes to the cluster scheduler. Preempted jobs are paused with psutil (SIGSTOP / SIGCONT on Linux and macOS, thread suspend on Windows) and resumed later. One profile minute is one second here."
+        actions={
+          <>
+            <button className="ghost-button" style={{ padding: '9px 14px' }} onClick={save} disabled={busy !== null}>
+              <BusyIcon busy={busy === 'save'} icon={<Save />} /> Save &amp; replay session
+            </button>
+            <button className="danger-button" style={{ padding: '9px 14px' }} onClick={reset} disabled={busy !== null}>
+              <BusyIcon busy={busy === 'reset'} icon={<RotateCcw />} /> Reset Session
+            </button>
+          </>
+        }
+      />
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleSaveSession}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-cr-cyan/20 text-cr-cyan border border-cr-cyan/40 rounded-lg hover:bg-cr-cyan/30 transition"
-          >
-            <Save className="w-3.5 h-3.5" /> <span>Save &amp; replay session</span>
-          </button>
-          <button
-            onClick={handleRestartSession}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-cr-rose/20 text-cr-rose border border-cr-rose/40 rounded-lg hover:bg-cr-rose/30 transition"
-          >
-            <RotateCcw className="w-3.5 h-3.5" /> <span>Reset Session</span>
-          </button>
-        </div>
-      </div>
-
-      {actionMsg && (
-        <div className="p-3 bg-cr-cyan/20 border border-cr-cyan/40 text-cr-cyan font-bold rounded-xl cr-glow-cyan">
-          {actionMsg}
+      {liveState && (
+        <div className="flex flex-wrap gap-2" style={{ marginBottom: 20 }} aria-label="Session status">
+          <span className="chip neutral mono">{liveState.session_id}</span>
+          <span className="chip">policy {liveState.profile}</span>
+          {policy && (
+            <span className="chip neutral">
+              {policy.scheduler}
+              {policy.quantum ? ` · q=${policy.quantum}s` : ''}
+              {policy.preemptive ? ' · preemptive' : ''} · Banker {policy.banker}
+            </span>
+          )}
+          <span className="chip neutral">
+            {liveState.counts.running} running · {liveState.counts.ready} ready · {liveState.counts.suspended} suspended
+          </span>
         </div>
       )}
 
-      {/* Two-Column Grid: Student Submissions vs Admin Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Student Job Submission Terminal */}
-        <div className="bg-cr-surface border border-cr-border rounded-xl p-4 space-y-4">
-          <div className="flex items-center gap-2 pb-2.5 border-b border-cr-border">
-            <Play className="w-4 h-4 text-cr-cyan" />
-            <h2 className="text-sm font-bold uppercase tracking-wider text-white">
-              Student Process Dispatcher
-            </h2>
-          </div>
+      <div className="stack">
+        <div className="grid-2">
+          <section className="panel" aria-labelledby="lc-submit">
+            <SectionHeading id="lc-submit" kicker="Student" title="Submit a job" />
+            <form className="panel-body stack" style={{ gap: 14 }} onSubmit={submit}>
+              <div className="form-grid">
+                <Field label="User ID">
+                  {(id) => <input id={id} className="control mono" value={userId} maxLength={64} required onChange={(e) => setUserId(e.target.value)} />}
+                </Field>
+                <Field label="Role">
+                  {(id) => (
+                    <select id={id} className="control" value={role} onChange={(e) => setRole(e.target.value)}>
+                      {ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {ROLE_LABEL[r]}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Field>
+                <Field label="Kind">
+                  {(id) => (
+                    <select id={id} className="control" value={kind} onChange={(e) => setKind(e.target.value)}>
+                      {KINDS.map((k) => (
+                        <option key={k} value={k}>
+                          {k}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Field>
+              </div>
+              <Field label="Program">
+                {(id) => (
+                  <select id={id} className="control" value={scriptName} onChange={(e) => setScriptName(e.target.value)}>
+                    {(limits?.scripts ?? [{ name: 'cpu_burn.py', label: 'CPU burn' }]).map((s) => (
+                      <option key={s.name} value={s.name}>
+                        {s.name}: {s.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+              <div className="form-grid">
+                <NumberField label="Duration (s)" value={duration} onChange={setDuration} range={lim('duration')} step={0.5} float />
+                <NumberField label="vCPU" value={cpu} onChange={setCpu} range={lim('cpu')} />
+                <NumberField label="Memory (GB)" value={mem} onChange={setMem} range={lim('mem')} />
+              </div>
+              <div className="form-grid">
+                <NumberField label="GPU claim" value={gpu} onChange={setGpu} range={lim('gpu')} />
+                <NumberField label="License claim" value={lic} onChange={setLic} range={lim('lic')} />
+                <NumberField label="I/O slot claim" value={io} onChange={setIo} range={lim('io')} />
+              </div>
+              <p className="help">Pooled claims are granted through the Banker's algorithm when the job starts and held until it ends.</p>
+              <button type="submit" className="primary-button" disabled={busy !== null}>
+                <BusyIcon busy={busy === 'submit'} icon={<Send />} /> Submit job
+              </button>
+            </form>
+          </section>
 
-          <form onSubmit={handleStudentSubmit} className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-slate-400 block mb-1">User Identifier</label>
-                <input
-                  type="text"
-                  value={userId}
-                  onChange={(e) => setUserId(e.target.value)}
-                  className="w-full bg-cr-card border border-cr-border rounded-lg px-2.5 py-1.5 text-white focus:outline-none"
-                />
+          <section className="panel" aria-labelledby="lc-admin">
+            <SectionHeading id="lc-admin" kicker="Lab admin" title="Policy and load" />
+            <div className="panel-body stack" style={{ gap: 18 }}>
+              <div className="subpanel stack" style={{ gap: 10 }}>
+                <Field label="Scheduling policy">{(id) => <ProfilePicker id={id} value={targetProfile} onChange={setTargetProfile} />}</Field>
+                <button className="primary-button" onClick={applyPolicy} disabled={busy !== null} style={{ alignSelf: 'flex-start' }}>
+                  <BusyIcon busy={busy === 'policy'} icon={<RotateCcw />} /> Apply to live scheduler
+                </button>
               </div>
 
-              <div>
-                <label className="text-slate-400 block mb-1">User Role</label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full bg-cr-card border border-cr-border rounded-lg px-2.5 py-1.5 text-slate-200 uppercase focus:outline-none"
-                >
-                  <option value="ug">UG Student</option>
-                  <option value="phd">PhD Researcher</option>
-                  <option value="faculty">Faculty Member</option>
-                  <option value="exam">Exam Student</option>
-                  <option value="demo">Viva Demo</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-slate-400 block mb-1">Real Python Benchmark Script</label>
-              <select
-                value={scriptName}
-                onChange={(e) => setScriptName(e.target.value)}
-                className="w-full bg-cr-card border border-cr-border rounded-lg px-2.5 py-1.5 text-white focus:outline-none font-bold"
-              >
-                <option value="cpu_burn.py">cpu_burn.py (Pure CPU Math Burner)</option>
-                <option value="matrix_mult.py">matrix_mult.py (Heavy Matrix Operations)</option>
-                <option value="prime_sieve.py">prime_sieve.py (Sieve of Eratosthenes)</option>
-                <option value="hash_files.py">hash_files.py (SHA-256 I/O & CPU Hashing)</option>
-                <option value="monte_carlo_pi.py">monte_carlo_pi.py (Monte Carlo Pi Estimation)</option>
-                <option value="sleep_io.py">sleep_io.py (Simulated I/O Blocking Work)</option>
-              </select>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="text-slate-400 block mb-1">Duration (s)</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min={lim('duration', { min: 0.5, max: 300 }).min}
-                  max={lim('duration', { min: 0.5, max: 300 }).max}
-                  value={duration}
-                  onChange={(e) => setDuration(clamp(parseFloat(e.target.value) || 4.0, lim('duration', { min: 0.5, max: 300 })))}
-                  className="w-full bg-cr-card border border-cr-border rounded-lg px-2.5 py-1 text-white focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-400 block mb-1">Cores</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={lim('cpu', { min: 1, max: 16 }).max}
-                  value={cpu}
-                  onChange={(e) => setCpu(clamp(parseInt(e.target.value) || 1, lim('cpu', { min: 1, max: 16 })))}
-                  className="w-full bg-cr-card border border-cr-border rounded-lg px-2.5 py-1 text-white focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-400 block mb-1">Memory (GB)</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={lim('mem', { min: 1, max: 64 }).max}
-                  value={mem}
-                  onChange={(e) => setMem(clamp(parseInt(e.target.value) || 1, lim('mem', { min: 1, max: 64 })))}
-                  className="w-full bg-cr-card border border-cr-border rounded-lg px-2.5 py-1 text-white focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              {([
-                ['GPU claim', gpu, setGpu, 'gpu'],
-                ['License claim', lic, setLic, 'lic'],
-                ['I/O slot claim', io, setIo, 'io'],
-              ] as const).map(([label, value, setter, key]) => (
-                <div key={key}>
-                  <label className="text-slate-400 block mb-1">{label}</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={lim(key, { min: 0, max: 6 }).max}
-                    value={value}
-                    onChange={(e) => setter(clamp(parseInt(e.target.value) || 0, lim(key, { min: 0, max: 6 })))}
-                    className="w-full bg-cr-card border border-cr-border rounded-lg px-2.5 py-1 text-white focus:outline-none"
-                  />
+              <div className="subpanel stack" style={{ gap: 10 }}>
+                <div className="form-grid">
+                  <NumberField label="Rush size (jobs)" value={rushCount} onChange={setRushCount} range={lim('rush_count')} />
+                  <Field label="Rush role">
+                    {(id) => (
+                      <select id={id} className="control" value={rushRole} onChange={(e) => setRushRole(e.target.value)}>
+                        {ROLES.map((r) => (
+                          <option key={r} value={r}>
+                            {ROLE_LABEL[r]}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </Field>
+                  <NumberField label="Each runs (s)" value={rushDuration} onChange={setRushDuration} range={lim('rush_duration')} step={0.5} float />
                 </div>
-              ))}
-            </div>
+                <button className="ghost-button" style={{ padding: '9px 14px', alignSelf: 'flex-start' }} onClick={rush} disabled={busy !== null}>
+                  <BusyIcon busy={busy === 'rush'} icon={<Flame />} /> Inject deadline rush
+                </button>
+              </div>
 
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-cr-cyan/20 hover:bg-cr-cyan/30 text-cr-cyan border border-cr-cyan/50 rounded-xl font-bold uppercase transition cr-glow-cyan"
-            >
-              Submit Live Job
-            </button>
-          </form>
+              <div className="notice info">
+                <Info />
+                <span>
+                  Live mode applies the profile's FCFS / SJF / RR / Priority ordering, the RR quantum, priority and SRTF preemption
+                  (for preemptive profiles, honouring preempt_by), head-of-line blocking when backfill is off, per-user quotas,
+                  role reservations, placement and the Banker mode. Calendar slots and reactive rules apply to simulation runs only.
+                </span>
+              </div>
+            </div>
+          </section>
         </div>
 
-        {/* Admin Control Room & Chaos Injector */}
-        <div className="bg-cr-surface border border-cr-border rounded-xl p-4 space-y-4">
-          <div className="flex items-center gap-2 pb-2.5 border-b border-cr-border">
-            <Flame className="w-4 h-4 text-cr-amber" />
-            <h2 className="text-sm font-bold uppercase tracking-wider text-white">
-              Admin Control Room & Chaos Engine
-            </h2>
+        <section className="panel" aria-labelledby="lc-procs">
+          <SectionHeading id="lc-procs" kicker="psutil" title={`Processes · ${running.length} running, ${waiting.length} waiting`} />
+          <div className="panel-body">
+            {!liveState ? (
+              <div className="skeleton" style={{ height: 120 }} />
+            ) : running.length + waiting.length === 0 ? (
+              <EmptyState icon={<Cpu />}>No processes yet. Submit a job or inject a rush.</EmptyState>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <caption className="sr-only">Running and waiting live jobs</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Job</th>
+                      <th scope="col">State</th>
+                      <th scope="col">Node</th>
+                      <th scope="col">Role</th>
+                      <th scope="col">Program</th>
+                      <th scope="col" className="num">CPU %</th>
+                      <th scope="col" className="num">RSS</th>
+                      <th scope="col" className="num">Left</th>
+                      <th scope="col">
+                        <span className="sr-only">Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {running.map((j) => (
+                      <tr key={j.id}>
+                        <td>
+                          <button className="mono underline" onClick={() => setSelectedJobId(j.id)}>
+                            {j.id}
+                          </button>
+                        </td>
+                        <td>
+                          <span className="chip">running</span>
+                        </td>
+                        <td className="mono">{nodeName(j.node_id)}</td>
+                        <td>{ROLE_LABEL[j.role] ?? j.role}</td>
+                        <td className="mono">{j.script}</td>
+                        <td className="num">{(j.metrics?.cpu_percent ?? 0).toFixed(1)}</td>
+                        <td className="num">{(j.metrics?.memory_rss_mb ?? 0).toFixed(1)} MB</td>
+                        <td className="num">{fmtDuration(j.remaining, 's')}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button className="danger-button icon-only" aria-label={`Kill ${j.id}`} onClick={() => kill(j.id, 'running')} disabled={busy === `kill-${j.id}`}>
+                            <BusyIcon busy={busy === `kill-${j.id}`} icon={<Trash2 />} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {waiting.map((j) => (
+                      <tr key={j.id}>
+                        <td>
+                          <button className="mono underline" onClick={() => setSelectedJobId(j.id)}>
+                            {j.id}
+                          </button>
+                        </td>
+                        <td>
+                          <span className={`chip ${j.suspended ? 'warn' : 'neutral'}`}>{j.suspended ? 'suspended' : 'queued'}</span>
+                        </td>
+                        <td>—</td>
+                        <td>{ROLE_LABEL[j.role] ?? j.role}</td>
+                        <td>—</td>
+                        <td className="num">—</td>
+                        <td className="num">—</td>
+                        <td className="num">—</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button
+                            className="danger-button icon-only"
+                            aria-label={`Kill ${j.id}`}
+                            onClick={() => kill(j.id, j.suspended ? 'suspended' : 'queued')}
+                            disabled={busy === `kill-${j.id}`}
+                          >
+                            <BusyIcon busy={busy === `kill-${j.id}`} icon={<Trash2 />} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-
-          {/* Hot Policy Switcher */}
-          <div className="p-3 bg-cr-card border border-cr-border rounded-lg space-y-2">
-            <label className="text-slate-300 font-bold block">
-              1. Hot-Switch Active Scheduling Policy
-            </label>
-            <div className="flex gap-2">
-              <select
-                value={targetProfile}
-                onChange={(e) => setTargetProfile(e.target.value)}
-                className="flex-1 bg-cr-surface border border-cr-border rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none"
-              >
-                {profiles.map((p) => (
-                  <option key={p.name} value={p.name}>
-                    {p.name} ({p.scheduler} • Banker {p.banker})
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={handleSwitchProfile}
-                className="px-3 py-1.5 bg-cr-amber/20 hover:bg-cr-amber/30 text-cr-amber border border-cr-amber/50 rounded-lg font-bold transition"
-              >
-                Apply Live
-              </button>
-            </div>
-          </div>
-
-          {/* Rush Injector */}
-          <div className="p-3 bg-cr-card border border-cr-border rounded-lg space-y-2">
-            <label className="text-slate-300 font-bold block">
-              2. Inject Sudden Deadline / Exam Rush
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                type="number"
-                min={1}
-                max={lim('rush_count', { min: 1, max: 20 }).max}
-                value={rushCount}
-                onChange={(e) => setRushCount(clamp(parseInt(e.target.value) || 5, lim('rush_count', { min: 1, max: 20 })))}
-                className="w-20 bg-cr-surface border border-cr-border rounded-lg px-2 py-1 text-white focus:outline-none"
-              />
-              <span className="text-slate-400">concurrent undergraduate processes</span>
-              <button
-                onClick={handleInjectRush}
-                className="ml-auto px-3 py-1.5 bg-cr-rose/20 hover:bg-cr-rose/30 text-cr-rose border border-cr-rose/50 rounded-lg font-bold transition"
-              >
-                Inject Burst
-              </button>
-            </div>
-          </div>
-
-          {/* Information Notice */}
-          <div className="p-2.5 bg-cr-surface border border-cr-border rounded-lg text-slate-400 text-[11px] font-sans">
-            <b>What live mode applies:</b> FCFS / SJF / Round-Robin / Priority ordering, the RR quantum
-            (1 profile minute = 1 second), priority and SRTF preemption for <code>preemptive</code> profiles
-            (honouring <code>preempt_by</code>), head-of-line blocking when backfill is off, quotas,
-            reservations, placement and Banker checks. Preempted processes are paused with
-            <code className="text-cr-cyan">psutil.Process.suspend()</code> and resumed later. Calendar slots
-            and reactive rules apply to simulation runs only.
-          </div>
-        </div>
-      </div>
-
-      {/* Active Running OS Child Processes Table */}
-      <div className="bg-cr-surface border border-cr-border rounded-xl p-4 space-y-3">
-        <div className="flex items-center justify-between border-b border-cr-border pb-2.5">
-          <div className="flex items-center gap-2">
-            <Cpu className="w-4 h-4 text-cr-cyan" />
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200">
-              Active OS Child Processes ({runningJobs.length} Running)
-            </h2>
-          </div>
-          <span className="text-[11px] text-slate-400">
-            Monitored in real-time via <code className="text-cr-cyan">psutil</code>
-          </span>
-        </div>
-
-        {runningJobs.length === 0 ? (
-          <div className="text-center py-6 text-slate-500 italic">
-            No processes currently dispatched on nodes. Submit jobs or inject a rush above.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left font-mono text-xs">
-              <thead>
-                <tr className="border-b border-cr-border text-slate-400 text-[10px] uppercase">
-                  <th className="py-2 px-2">Job ID</th>
-                  <th className="py-2 px-2">Node Assigned</th>
-                  <th className="py-2 px-2">Role</th>
-                  <th className="py-2 px-2">Kind</th>
-                  <th className="py-2 px-2">CPU Utilization</th>
-                  <th className="py-2 px-2">RAM Footprint</th>
-                  <th className="py-2 px-2">Status</th>
-                  <th className="py-2 px-2 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-cr-border/40">
-                {runningJobs.map((j) => (
-                  <tr key={j.id} className="hover:bg-cr-card/40 transition">
-                    <td className="py-2.5 px-2 font-bold text-white">{j.id}</td>
-                    <td className="py-2.5 px-2 text-cr-cyan">Node {j.node_id}</td>
-                    <td className="py-2.5 px-2 uppercase font-bold text-slate-300">{j.role}</td>
-                    <td className="py-2.5 px-2 text-slate-400">{j.kind}</td>
-                    <td className="py-2.5 px-2 text-cr-emerald font-bold">
-                      {j.metrics?.cpu_percent ?? 0.0}%
-                    </td>
-                    <td className="py-2.5 px-2 text-blue-300">
-                      {j.metrics?.memory_rss_mb ?? 0.0} MB
-                    </td>
-                    <td className="py-2.5 px-2">
-                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-cr-emerald/20 text-cr-emerald border border-cr-emerald/40 uppercase font-bold">
-                        {j.metrics?.status || 'RUNNING'}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-2 text-right">
-                      <button
-                        onClick={() => handleKillJob(j.id)}
-                        className="p-1 rounded bg-cr-rose/20 hover:bg-cr-rose/30 text-cr-rose border border-cr-rose/40 transition"
-                        title="Kill Job"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        </section>
       </div>
     </div>
   );

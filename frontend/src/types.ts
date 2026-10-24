@@ -170,9 +170,39 @@ export interface RunResult {
   initial_profile?: string;
 }
 
+export interface LiveJobBrief {
+  id: string;
+  user_id: string;
+  role: Role;
+  kind: JobKind;
+  cpu: number;
+  mem: number;
+  pooled: PooledResources;
+  seq: number;
+}
+
+export interface LiveBankerRow {
+  id: string;
+  state: string;
+  allocation: PooledResources;
+  need: PooledResources;
+  max_claim: PooledResources;
+}
+
+/** STATE_SNAPSHOT / INIT_STATE payload from live/live_runner.py. Times are seconds. */
 export interface LiveStateSnapshot {
   session_id: string;
   profile: string;
+  policy: {
+    scheduler: SchedulerKind;
+    quantum: number | null;
+    preemptive: boolean;
+    preempt_by: Role[];
+    placement: PlacementKind;
+    banker: BankerMode;
+    backfill: boolean;
+    quota_per_user: number | null;
+  };
   elapsed_seconds: number;
   nodes: {
     id: number;
@@ -184,12 +214,18 @@ export interface LiveStateSnapshot {
     mem_total: number;
     mem_allocated: number;
     mem_available: number;
+    running_job_ids: string[];
   }[];
   pooled: {
     total: PooledResources;
     available: PooledResources;
   };
   banker_safe_sequence?: string[] | null;
+  banker: {
+    mode: BankerMode;
+    safe: boolean;
+    jobs: LiveBankerRow[];
+  };
   counts: {
     ready: number;
     running: number;
@@ -198,26 +234,17 @@ export interface LiveStateSnapshot {
     failed: number;
     total: number;
   };
-  ready_queue: {
-    id: string;
-    role: Role;
-    kind: JobKind;
-    cpu: number;
-    mem: number;
-    arrival: number;
-    score: number;
-  }[];
-  running_jobs: {
-    id: string;
+  ready_queue: (LiveJobBrief & { arrival: number; suspended: boolean; score: number })[];
+  running_jobs: (LiveJobBrief & {
     node_id: number;
-    role: Role;
-    kind: JobKind;
+    script: string | null;
+    remaining: number;
     metrics: {
       status: string;
       cpu_percent: number;
       memory_rss_mb: number;
     };
-  }[];
+  })[];
 }
 
 // ---------------------------------------------------------------------------

@@ -1,185 +1,133 @@
 import React, { useMemo } from 'react';
 import { useLabStore } from '../store/useLabStore';
+import { SimEvent } from '../types';
+import { fmtT, ROLE_LABEL, ROLE_TONE, TimeUnit, unitOf } from '../lib/format';
+import { SectionHeading } from './ui';
 
 interface GanttInterval {
   nodeId: number;
-  nodeName: string;
   jobId: string;
   role: string;
   start: number;
   end: number;
+  open: boolean;
 }
 
+const STARTS = new Set(['JOB_STARTED', 'JOB_RESUMED', 'JOB_DISPATCHED']);
+const ENDS = new Set(['JOB_FINISHED', 'JOB_COMPLETED', 'JOB_PREEMPTED', 'JOB_KILLED', 'JOB_FAILED']);
+const LIVE_WINDOW_S = 120;
+
+/** Live events nest their payload under `details`; flatten so both shapes read alike. */
+const flat = (e: SimEvent): any => (e.details ? { ...e.details, ...e } : e);
+
+function buildIntervals(events: SimEvent[], until: number, roleHint: Record<string, string> = {}) {
+  const open: Record<string, { start: number; nodeId: number }> = {};
+  const roles: Record<string, string> = { ...roleHint };
+  const out: GanttInterval[] = [];
+  for (const raw of events) {
+    const ev = flat(raw);
+    const jid = ev.job_id;
+    if (!jid) continue;
+    if (ev.role) roles[jid] = ev.role;
+    if (STARTS.has(ev.type) && ev.node_id !== undefined && ev.node_id !== null) {
+      open[jid] = { start: ev.t, nodeId: ev.node_id };
+    } else if (ENDS.has(ev.type) && open[jid]) {
+      const st = open[jid];
+      out.push({ nodeId: st.nodeId, jobId: jid, role: roles[jid] || 'ug', start: st.start, end: Math.max(st.start, ev.t), open: false });
+      delete open[jid];
+    }
+  }
+  for (const [jid, st] of Object.entries(open)) {
+    out.push({ nodeId: st.nodeId, jobId: jid, role: roles[jid] || 'ug', start: st.start, end: until, open: true });
+  }
+  return out;
+}
+
+const LEGEND: [string, string][] = [
+  ['undergrad', 'Undergrad / guest'],
+  ['phd', 'PhD'],
+  ['faculty', 'Faculty'],
+  ['exam', 'Exam / demo'],
+];
+
 export const GanttChart: React.FC = () => {
-  const { runResult, cluster, maxScrubberTime, setSelectedJobId } = useLabStore();
+  const { runResult, cluster, maxScrubberTime, setSelectedJobId, mode, liveEvents, liveState } = useLabStore();
+  const live = mode === 'live';
+  const unit: TimeUnit = live ? 's' : unitOf(runResult);
 
-  const maxT = maxScrubberTime || 100;
-
-  // Compute execution intervals per node
-  const intervalsByNode = useMemo(() => {
-    const nodes = cluster?.nodes || [];
-    const map: Record<number, GanttInterval[]> = {};
-    for (const n of nodes) {
-      map[n.id] = [];
+  const { t0, t1, intervals } = useMemo(() => {
+    if (live) {
+      const now = liveState?.elapsed_seconds ?? 0;
+      const from = Math.max(0, now - LIVE_WINDOW_S);
+      const hint: Record<string, string> = {};
+      for (const j of liveState?.running_jobs || []) hint[j.id] = j.role;
+      const ivs = buildIntervals(liveEvents, now, hint).filter((iv) => iv.end >= from);
+      return { t0: from, t1: Math.max(from + 10, now), intervals: ivs };
     }
+    const maxT = maxScrubberTime || 100;
+    return { t0: 0, t1: maxT, intervals: buildIntervals(runResult?.events || [], maxT) };
+  }, [live, liveEvents, liveState?.elapsed_seconds, runResult, maxScrubberTime]);
 
-    if (!runResult?.events) return map;
-
-    const activeStarts: Record<string, { start: number; nodeId: number }> = {};
-    const roles: Record<string, string> = {};
-
-    for (const ev of runResult.events) {
-      const anyEv = ev as any;
-      const jid = anyEv.job_id || anyEv.details?.job_id;
-      if (!jid) continue;
-
-      if (anyEv.role || anyEv.details?.role) {
-        roles[jid] = anyEv.role || anyEv.details?.role;
-      }
-
-      if (ev.type === 'JOB_STARTED' || ev.type === 'JOB_RESUMED') {
-        const nid = anyEv.node_id ?? anyEv.details?.node_id;
-        if (nid !== undefined && nid !== null) {
-          activeStarts[jid] = { start: ev.t, nodeId: nid };
-        }
-      } else if (
-        ev.type === 'JOB_FINISHED' ||
-        ev.type === 'JOB_COMPLETED' ||
-        ev.type === 'JOB_PREEMPTED' ||
-        ev.type === 'JOB_KILLED'
-      ) {
-        const st = activeStarts[jid];
-        if (st) {
-          const node = nodes.find((n) => n.id === st.nodeId);
-          if (node && map[st.nodeId]) {
-            map[st.nodeId].push({
-              nodeId: st.nodeId,
-              nodeName: node.name,
-              jobId: jid,
-              role: roles[jid] || 'ug',
-              start: st.start,
-              end: Math.max(st.start + 1, ev.t),
-            });
-          }
-          delete activeStarts[jid];
-        }
-      }
-    }
-
-    // Append any still running jobs up to maxT
-    for (const [jid, st] of Object.entries(activeStarts)) {
-      const node = nodes.find((n) => n.id === st.nodeId);
-      if (node && map[st.nodeId]) {
-        map[st.nodeId].push({
-          nodeId: st.nodeId,
-          nodeName: node.name,
-          jobId: jid,
-          role: roles[jid] || 'ug',
-          start: st.start,
-          end: maxT,
-        });
-      }
-    }
-
-    return map;
-  }, [runResult, cluster, maxT]);
-
-  const formatTime = (t: number) => {
-    const mins = Math.floor(t / 60);
-    const secs = Math.floor(t % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const timeTicks = [
-    0,
-    Math.round(maxT * 0.2),
-    Math.round(maxT * 0.4),
-    Math.round(maxT * 0.6),
-    Math.round(maxT * 0.8),
-    Math.round(maxT),
-  ];
-
-  const getTone = (role: string) => {
-    switch (role) {
-      case 'phd':
-        return 'phd';
-      case 'faculty':
-        return 'faculty';
-      case 'exam':
-        return 'exam';
-      case 'ug':
-      default:
-        return 'undergrad';
-    }
-  };
-
+  const span = Math.max(1, t1 - t0);
+  const ticks = [0, 0.2, 0.4, 0.6, 0.8, 1].map((f) => t0 + f * span);
   const nodes = cluster?.nodes || [];
 
   return (
-    <section className="panel gantt-panel">
-      <div className="section-heading">
-        <div>
-          <span className="section-kicker">Execution timeline</span>
-          <h2>Gantt overview</h2>
-        </div>
-        <div className="legend">
-          <span>
-            <i className="legend-dot undergrad" />
-            Undergrad
-          </span>
-          <span>
-            <i className="legend-dot phd" />
-            PhD
-          </span>
-          <span>
-            <i className="legend-dot faculty" />
-            Faculty
-          </span>
-          <span>
-            <i className="legend-dot exam" />
-            Exam
-          </span>
-        </div>
-      </div>
+    <section className="panel gantt-panel" aria-labelledby="gantt-heading">
+      <SectionHeading
+        id="gantt-heading"
+        kicker={live ? `Execution timeline · last ${LIVE_WINDOW_S}s` : 'Execution timeline'}
+        title="Gantt overview"
+        actions={
+          <div className="legend" aria-label="Legend">
+            {LEGEND.map(([tone, label]) => (
+              <span key={tone}>
+                <i className={`legend-dot ${tone}`} />
+                {label}
+              </span>
+            ))}
+          </div>
+        }
+      />
 
-      <div className="gantt">
-        {/* Axis Ticks */}
-        <div className="gantt-axis">
+      <div className="gantt" role="img" aria-label={`Gantt chart of ${intervals.length} execution slices across ${nodes.length} nodes`}>
+        <div className="gantt-axis" aria-hidden="true">
           <span />
-          {timeTicks.map((t, idx) => (
-            <span key={idx}>{formatTime(t)}</span>
+          {ticks.map((t, idx) => (
+            <span key={idx}>{fmtT(t, unit)}</span>
           ))}
         </div>
 
-        {/* Node Rows */}
-        {nodes.map((node) => {
-          const list = intervalsByNode[node.id] || [];
-          return (
-            <div className="gantt-row" key={node.id}>
-              <span className="gantt-label">{node.name}</span>
-              <div className="gantt-track">
-                {list.map((item, idx) => {
-                  const left = Math.min(100, Math.max(0, (item.start / maxT) * 100));
-                  const width = Math.min(
-                    100 - left,
-                    Math.max(2, ((item.end - item.start) / maxT) * 100)
-                  );
+        {nodes.map((node) => (
+          <div className="gantt-row" key={node.id}>
+            <span className="gantt-label">{node.name}</span>
+            <div className="gantt-track">
+              {intervals
+                .filter((iv) => iv.nodeId === node.id)
+                .map((item, idx) => {
+                  const left = Math.min(100, Math.max(0, ((item.start - t0) / span) * 100));
+                  const width = Math.min(100 - left, Math.max(1.2, ((item.end - Math.max(item.start, t0)) / span) * 100));
                   return (
                     <button
                       key={idx}
-                      className={`gantt-bar ${getTone(item.role)}`}
+                      className={`gantt-bar ${ROLE_TONE[item.role] ?? 'undergrad'}`}
                       style={{ left: `${left}%`, width: `${width}%` }}
                       onClick={() => setSelectedJobId(item.jobId)}
-                      title={`${item.jobId} (${item.role}): ${formatTime(item.start)} - ${formatTime(item.end)}`}
+                      title={`${item.jobId} (${ROLE_LABEL[item.role] ?? item.role}): ${fmtT(item.start, unit)} – ${item.open ? 'running' : fmtT(item.end, unit)}`}
+                      aria-label={`${item.jobId}, ${ROLE_LABEL[item.role] ?? item.role}, on ${node.name} from ${fmtT(item.start, unit)}`}
                     >
                       {item.jobId}
                     </button>
                   );
                 })}
-              </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
+        {live && intervals.length === 0 && (
+          <p className="help" style={{ padding: '8px 0 0 74px' }}>
+            No processes in the last {LIVE_WINDOW_S} seconds. Submit a job from the Live Console.
+          </p>
+        )}
       </div>
     </section>
   );

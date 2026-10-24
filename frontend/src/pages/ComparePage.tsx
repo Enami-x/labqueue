@@ -1,15 +1,17 @@
 import React, { useEffect } from 'react';
 import { useLabStore } from '../store/useLabStore';
-import { Layers, ArrowUpDown, Play, Check, Sparkles } from 'lucide-react';
-import { Profile, RunResult } from '../types';
+import { GitCompareArrows, Play, X } from 'lucide-react';
+import { Profile, RunMetrics, RunResult } from '../types';
+import { ProfilePicker } from '../components/ProfilePicker';
+import { BusyIcon, EmptyState, Field, PageHeader, SectionHeading, Skeleton } from '../components/ui';
+import { fmtDuration, fmtPct, profileLabel } from '../lib/format';
 
 interface Insight {
   title: string;
   body: string;
-  tone: 'good' | 'bad' | 'neutral';
 }
 
-const fmtMin = (v: number) => `${v.toFixed(1)} min`;
+const fmtMin = (v: number) => fmtDuration(v, 'min', 1);
 
 /** Plain-language findings derived from the runs actually on screen. */
 export function computeInsights(runs: RunResult[], profilesByName: Record<string, Profile>): Insight[] {
@@ -25,280 +27,242 @@ export function computeInsights(runs: RunResult[], profilesByName: Record<string
     insights.push({
       title: 'Average wait',
       body: `${bestWait.profile_name} cut average wait by ${fmtMin(-waitDelta)}${pct} vs ${base.profile_name} (${fmtMin(b.avg_wait)} → ${fmtMin(bestWait.metrics.avg_wait)}).`,
-      tone: 'good',
     });
   } else {
     insights.push({
       title: 'Average wait',
-      body: `No policy beat the baseline ${base.profile_name} (${fmtMin(b.avg_wait)}); the closest was ${bestWait.profile_name} at ${fmtMin(bestWait.metrics.avg_wait)}.`,
-      tone: 'neutral',
+      body: `No policy beat the baseline ${base.profile_name} (${fmtMin(b.avg_wait)}). The closest was ${bestWait.profile_name} at ${fmtMin(bestWait.metrics.avg_wait)}.`,
     });
   }
 
-  const fairest = [...runs].sort((x, y) => y.metrics.jains_fairness - x.metrics.jains_fairness)[0];
-  const leastFair = [...runs].sort((x, y) => x.metrics.jains_fairness - y.metrics.jains_fairness)[0];
+  const byFair = [...runs].sort((x, y) => y.metrics.jains_fairness - x.metrics.jains_fairness);
+  const [fairest, leastFair] = [byFair[0], byFair[byFair.length - 1]];
   insights.push({
     title: 'Fairness',
     body:
-      fairest === leastFair || fairest.metrics.jains_fairness - leastFair.metrics.jains_fairness < 0.005
-        ? `All policies are equally fair here (Jain's index ≈ ${fairest.metrics.jains_fairness.toFixed(3)}).`
+      fairest.metrics.jains_fairness - leastFair.metrics.jains_fairness < 0.005
+        ? `All policies are about equally fair here (Jain's index ≈ ${fairest.metrics.jains_fairness.toFixed(3)}).`
         : `${fairest.profile_name} is the fairest (Jain's ${fairest.metrics.jains_fairness.toFixed(3)}); ${leastFair.profile_name} is the least fair (${leastFair.metrics.jains_fairness.toFixed(3)}).`,
-    tone: 'neutral',
   });
 
   const withDeadlocks = runs.filter((r) => r.metrics.deadlocks_detected > 0);
   if (withDeadlocks.length) {
     insights.push({
       title: 'Deadlocks',
-      body: withDeadlocks
-        .map((r) => `${r.profile_name} hit ${r.metrics.deadlocks_detected} deadlock${r.metrics.deadlocks_detected === 1 ? '' : 's'} (Banker ${profilesByName[r.profile_name]?.banker ?? '?'})`)
-        .join('; ') + '.',
-      tone: 'bad',
+      body:
+        withDeadlocks
+          .map((r) => {
+            const n = r.metrics.deadlocks_detected;
+            return `${r.profile_name} hit ${n} deadlock${n === 1 ? '' : 's'} (Banker ${profilesByName[r.profile_name]?.banker ?? '?'})`;
+          })
+          .join('; ') + '.',
     });
   } else {
     const denials = runs.reduce((n, r) => n + r.metrics.banker_denials, 0);
     insights.push({
       title: 'Deadlocks',
-      body: `No deadlocks in any run. The Banker's algorithm denied ${denials} unsafe request${denials === 1 ? '' : 's'} across these policies.`,
-      tone: 'good',
+      body: `No deadlocks in any run. The Banker's algorithm refused ${denials} unsafe request${denials === 1 ? '' : 's'} across these policies.`,
     });
   }
   return insights;
 }
+
+type Col = { key: keyof RunMetrics; label: string; fmt: (v: number) => string; lowerIsBetter: boolean };
+const COLUMNS: Col[] = [
+  { key: 'avg_wait', label: 'Avg wait', fmt: fmtMin, lowerIsBetter: true },
+  { key: 'p99_wait', label: 'P99 wait', fmt: fmtMin, lowerIsBetter: true },
+  { key: 'makespan', label: 'Makespan', fmt: (v) => fmtDuration(v, 'min', 0), lowerIsBetter: true },
+  { key: 'jains_fairness', label: "Jain's fairness", fmt: (v) => v.toFixed(3), lowerIsBetter: false },
+  { key: 'cpu_util_avg', label: 'CPU util', fmt: (v) => fmtPct(v, 1), lowerIsBetter: false },
+  { key: 'deadlocks_detected', label: 'Deadlocks', fmt: (v) => String(v), lowerIsBetter: true },
+  { key: 'starved_jobs', label: 'Starved', fmt: (v) => String(v), lowerIsBetter: true },
+];
+
+const Delta: React.FC<{ col: Col; value: number; base: number }> = ({ col, value, base }) => {
+  const d = value - base;
+  if (Math.abs(d) < 1e-9) return <span className="delta">±0</span>;
+  const better = col.lowerIsBetter ? d < 0 : d > 0;
+  const shown = col.key === 'cpu_util_avg' ? `${(d * 100).toFixed(1)} pt` : col.key === 'jains_fairness' ? d.toFixed(3) : d.toFixed(col.key === 'avg_wait' || col.key === 'p99_wait' ? 1 : 0);
+  return (
+    <span className={`delta ${better ? 'better' : 'worse'}`} title={better ? 'better than baseline' : 'worse than baseline'}>
+      {d > 0 ? '▲ +' : '▼ '}
+      {shown}
+      <span className="sr-only">{better ? ', better than baseline' : ', worse than baseline'}</span>
+    </span>
+  );
+};
 
 export const ComparePage: React.FC = () => {
   const {
     profiles,
     compareProfileNames,
     toggleCompareProfile,
+    addCompareProfile,
     compareRuns,
+    compareScenario,
+    compareLoading,
     runCompareBatch,
-    loading,
     activeScenario,
+    scenarios,
+    setActiveScenario,
   } = useLabStore();
 
   useEffect(() => {
-    if (Object.keys(compareRuns).length === 0) {
-      runCompareBatch();
-    }
+    if (Object.keys(compareRuns).length === 0) runCompareBatch();
   }, []);
 
-  const runsList = compareProfileNames
-    .map((name) => compareRuns[name])
-    .filter(Boolean);
-
-  const baseline = runsList[0]?.metrics;
   const profilesByName = Object.fromEntries(profiles.map((p) => [p.name, p]));
-  const insights = computeInsights(runsList, profilesByName);
+  const runsList = compareProfileNames.map((n) => compareRuns[n]).filter(Boolean) as RunResult[];
+  const stale =
+    compareScenario !== activeScenario || compareProfileNames.some((n) => !compareRuns[n]) || runsList.length < 2;
+  const baseline = runsList[0]?.metrics;
+  const insights = stale ? [] : computeInsights(runsList, profilesByName);
 
   return (
-    <div className="flex-1 p-6 max-w-[1600px] w-full mx-auto space-y-6 overflow-y-auto">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
-        <div>
-          <div className="flex items-center gap-2 text-indigo-400 text-xs font-semibold uppercase tracking-wider mb-1">
-            <Layers className="w-4 h-4" />
-            <span>Side-by-Side Policy Evaluation</span>
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">
-            Multi-Policy Comparison Matrix
-          </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Evaluating 2 to 4 scheduling algorithms deterministically against workload scenario:{' '}
-            <span className="text-sky-400 font-medium">{activeScenario}</span>.
-          </p>
-        </div>
+    <div>
+      <PageHeader
+        kicker="Policy comparison"
+        title={
+          <>
+            Compare policies<span>.</span>
+          </>
+        }
+        description={
+          <>
+            Run two to four profiles on the same workload and seed. The first profile is the baseline for every delta.
+            Times are simulated minutes.
+          </>
+        }
+        actions={
+          <button className="primary-button" onClick={runCompareBatch} disabled={compareLoading}>
+            <BusyIcon busy={compareLoading} icon={<Play />} />
+            {compareLoading ? 'Running…' : 'Run comparison'}
+          </button>
+        }
+      />
 
-        <button
-          onClick={runCompareBatch}
-          disabled={loading || compareProfileNames.length < 2}
-          className="plume-btn-primary flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-xs transition disabled:opacity-50"
-        >
-          <Play className="w-3.5 h-3.5 fill-current" />
-          <span>{loading ? 'Simulating Policies...' : 'Run Comparative Analysis'}</span>
-        </button>
-      </div>
-
-      {/* Profile Selector Chips */}
-      <div className="plume-card rounded-2xl p-5">
-        <span className="text-xs font-semibold text-slate-300 block mb-3">
-          Select Policies to Compare (2 to 4 active):
-        </span>
-        <div className="flex flex-wrap gap-2">
-          {profiles.slice(0, 18).map((p) => {
-            const isSelected = compareProfileNames.includes(p.name);
-            return (
-              <button
-                key={p.name}
-                onClick={() => toggleCompareProfile(p.name)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
-                  isSelected
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25 border border-indigo-400/40'
-                    : 'bg-white/[0.04] text-slate-400 hover:text-white hover:bg-white/[0.08] border border-white/[0.06]'
-                }`}
-              >
-                {isSelected && <Check className="w-3.5 h-3.5" />}
-                <span>{p.name}</span>
-                <span className="text-[10px] text-slate-400 uppercase font-mono">({p.scheduler})</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Comparative Metrics Table */}
-      <div className="plume-card rounded-2xl p-5 overflow-x-auto">
-        <div className="flex items-center gap-2 pb-3 mb-3 border-b border-white/[0.08]">
-          <ArrowUpDown className="w-4 h-4 text-sky-400" />
-          <h2 className="text-sm font-semibold text-white tracking-tight">
-            Performance Deltas & Trade-off Matrix
-          </h2>
-        </div>
-
-        <table className="w-full text-left text-xs">
-          <thead>
-            <tr className="border-b border-white/[0.08] text-slate-400 uppercase text-[11px] font-medium">
-              <th className="py-3 px-3.5">Policy Profile</th>
-              <th className="py-3 px-3.5">Scheduler</th>
-              <th className="py-3 px-3.5">Makespan</th>
-              <th className="py-3 px-3.5">Avg Wait</th>
-              <th className="py-3 px-3.5">P99 Wait</th>
-              <th className="py-3 px-3.5">Jain's Fairness</th>
-              <th className="py-3 px-3.5">CPU Util</th>
-              <th className="py-3 px-3.5">Deadlocks</th>
-              <th className="py-3 px-3.5">Starvation</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/[0.04]">
-            {runsList.map((run, idx) => {
-              const m = run?.metrics || ({} as any);
-              const isBase = idx === 0;
-
-              const makespan = m.makespan ?? 0;
-              const avgWait = m.avg_wait ?? 0;
-              const p99 = m.p99_wait ?? m.p95_wait ?? 0;
-              const jain = m.jains_fairness ?? (m as any).fairness_index ?? 0;
-              const cpuUtil = m.cpu_util_avg ?? (m as any).utilization ?? 0;
-              const deadlocks = m.deadlocks_detected ?? 0;
-              const starved = m.starved_jobs ?? (m as any).starvation_count ?? 0;
-
-              const baseMakespan = baseline?.makespan ?? 0;
-              const baseWait = baseline?.avg_wait ?? 0;
-              const baseJain = baseline?.jains_fairness ?? (baseline as any)?.fairness_index ?? 0;
-
-              const makespanDelta = baseline ? makespan - baseMakespan : 0;
-              const waitDelta = baseline ? avgWait - baseWait : 0;
-              const jainDelta = baseline ? jain - baseJain : 0;
-
-              return (
-                <tr key={run.run_id} className="hover:bg-white/[0.02] transition">
-                  <td className="py-3.5 px-3.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-white">{run.profile_name}</span>
-                      {isBase && (
-                        <span className="px-2 py-0.5 text-[10px] font-medium uppercase rounded-full bg-white/[0.08] text-slate-300">
-                          Baseline
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="py-3.5 px-3.5 text-sky-400 font-mono font-medium">
-                    {profilesByName[run.profile_name]?.scheduler ?? '—'}
-                  </td>
-                  <td className="py-3.5 px-3.5 font-mono">
-                    <span className="text-white font-bold">{makespan.toFixed(0)}m</span>
-                    {!isBase && (
-                      <span
-                        className={`ml-2 text-[11px] font-medium ${
-                          makespanDelta <= 0 ? 'text-emerald-400' : 'text-rose-400'
-                        }`}
-                      >
-                        {makespanDelta <= 0 ? '' : '+'}
-                        {makespanDelta.toFixed(0)}m
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-3.5 px-3.5 font-mono">
-                    <span className="text-sky-400 font-bold">{avgWait.toFixed(1)}m</span>
-                    {!isBase && (
-                      <span
-                        className={`ml-2 text-[11px] font-medium ${
-                          waitDelta <= 0 ? 'text-emerald-400' : 'text-rose-400'
-                        }`}
-                      >
-                        {waitDelta <= 0 ? '' : '+'}
-                        {waitDelta.toFixed(1)}m
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-3.5 px-3.5 text-amber-400 font-mono font-bold">
-                    {p99.toFixed(1)}m
-                  </td>
-                  <td className="py-3.5 px-3.5 font-mono">
-                    <span
-                      className={`font-bold ${
-                        jain >= 0.85
-                          ? 'text-emerald-400'
-                          : jain >= 0.65
-                          ? 'text-amber-400'
-                          : 'text-rose-400'
-                      }`}
-                    >
-                      {jain.toFixed(3)}
-                    </span>
-                    {!isBase && (
-                      <span
-                        className={`ml-2 text-[11px] font-medium ${
-                          jainDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                        }`}
-                      >
-                        {jainDelta >= 0 ? '+' : ''}
-                        {jainDelta.toFixed(3)}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-3.5 px-3.5 text-indigo-300 font-mono">
-                    {(cpuUtil * 100).toFixed(1)}%
-                  </td>
-                  <td className="py-3.5 px-3.5 font-mono">
-                    <span
-                      className={
-                        deadlocks > 0 ? 'text-rose-400 font-bold' : 'text-slate-400'
-                      }
-                    >
-                      {deadlocks}
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-3.5 font-mono">
-                    <span
-                      className={starved > 0 ? 'text-amber-400 font-bold' : 'text-slate-400'}
-                    >
-                      {starved}
-                    </span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Editorial Key Insights Callout */}
-      <div className="plume-card rounded-2xl p-5 space-y-2.5">
-        <div className="flex items-center gap-2 text-indigo-400">
-          <Sparkles className="w-4 h-4" />
-          <h3 className="text-sm font-semibold text-white tracking-tight">
-            Key OS Policy Insights Observed
-          </h3>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1 text-xs text-slate-300">
-          {insights.map((ins) => (
-            <div key={ins.title} className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-              <span className="font-semibold text-sky-400 block mb-1">{ins.title}</span>
-              <p className="text-slate-400 leading-relaxed">{ins.body}</p>
+      <div className="stack">
+        <section className="panel" aria-labelledby="cmp-select">
+          <SectionHeading id="cmp-select" kicker="Setup" title="Policies and workload" />
+          <div className="panel-body stack" style={{ gap: 16 }}>
+            <div className="flex flex-wrap gap-2" aria-label="Selected policies">
+              {compareProfileNames.map((n, i) => (
+                <span key={n} className={`chip ${i === 0 ? '' : 'neutral'}`}>
+                  {i === 0 && <b>Baseline ·</b>} {profileLabel(n)}
+                  <button
+                    onClick={() => toggleCompareProfile(n)}
+                    aria-label={`Remove ${n} from comparison`}
+                    style={{ border: 0, background: 'transparent', color: 'inherit', display: 'grid', placeItems: 'center' }}
+                  >
+                    <X />
+                  </button>
+                </span>
+              ))}
             </div>
-          ))}
-        </div>
+            <div className="form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+              <Field label="Add a policy" hint={`${compareProfileNames.length} of 4 selected`}>
+                {(id, d) => (
+                  <ProfilePicker
+                    id={id}
+                    describedBy={d}
+                    value=""
+                    placeholder="Search profiles to add…"
+                    disabled={compareProfileNames.length >= 4}
+                    filter={(p) => !compareProfileNames.includes(p.name)}
+                    onChange={addCompareProfile}
+                  />
+                )}
+              </Field>
+              <Field label="Workload scenario">
+                {(id) => (
+                  <select id={id} className="control" value={activeScenario} onChange={(e) => setActiveScenario(e.target.value)}>
+                    {scenarios.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel" aria-labelledby="cmp-results" aria-busy={compareLoading}>
+          <SectionHeading
+            id="cmp-results"
+            kicker={compareScenario ? `Scenario ${compareScenario}` : 'Results'}
+            title="Results and deltas"
+            actions={stale && !compareLoading && runsList.length > 0 ? <span className="chip warn">Setup changed: run again</span> : undefined}
+          />
+          <div className="panel-body">
+            {compareLoading && runsList.length === 0 ? (
+              <div className="stack" style={{ gap: 10 }}>
+                {compareProfileNames.map((n) => (
+                  <Skeleton key={n} height={38} />
+                ))}
+              </div>
+            ) : runsList.length === 0 ? (
+              <EmptyState icon={<GitCompareArrows />} action={<button className="primary-button" onClick={runCompareBatch}>Run comparison</button>}>
+                No results yet.
+              </EmptyState>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <caption className="help" style={{ captionSide: 'bottom', textAlign: 'left', paddingTop: 10 }}>
+                    Deltas are against the baseline: ▲/▼ is the direction of change; mint means better, orange means worse.
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Policy</th>
+                      <th scope="col">Scheduler</th>
+                      {COLUMNS.map((c) => (
+                        <th key={c.key} scope="col" className="num">
+                          {c.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {runsList.map((run, idx) => (
+                      <tr key={run.profile_name}>
+                        <th scope="row">
+                          {profileLabel(run.profile_name)} {idx === 0 && <span className="chip neutral">baseline</span>}
+                        </th>
+                        <td>{profilesByName[run.profile_name]?.scheduler ?? '—'}</td>
+                        {COLUMNS.map((c) => {
+                          const v = Number(run.metrics[c.key] ?? 0);
+                          return (
+                            <td key={c.key} className="num">
+                              {c.fmt(v)}
+                              {idx > 0 && baseline && <Delta col={c} value={v} base={Number(baseline[c.key] ?? 0)} />}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {insights.length > 0 && (
+          <section aria-labelledby="cmp-insights">
+            <h2 id="cmp-insights" className="section-kicker" style={{ margin: '4px 0 12px' }}>
+              What changed
+            </h2>
+            <div className="grid-3">
+              {insights.map((ins) => (
+                <div key={ins.title} className="panel insight">
+                  <b>{ins.title}</b>
+                  <p>{ins.body}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

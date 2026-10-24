@@ -1,137 +1,186 @@
 import React from 'react';
 import { useLabStore } from '../store/useLabStore';
-import { ShieldCheck, AlertOctagon, ArrowRight, ShieldAlert } from 'lucide-react';
+import { ArrowRight, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { PooledResources } from '../types';
+import { BankerRow } from '../lib/banker';
+import { fmtT, unitOf } from '../lib/format';
+import { EmptyState, SectionHeading } from './ui';
 
+const vec = (r: PooledResources) => `(${r.gpu}, ${r.lic}, ${r.io})`;
+
+/**
+ * Banker's algorithm view: Available vector, Allocation / Need per job holding
+ * pooled resources, the safe sequence, and recent unsafe-request denials.
+ */
 export const BankerPanel: React.FC = () => {
-  const { replayState, liveState, mode } = useLabStore();
+  const { replayState, liveState, liveEvents, mode, setSelectedJobId, runResult, profiles, activeProfile } = useLabStore();
+  const live = mode === 'live';
 
-  const pooled =
-    mode === 'live'
-      ? liveState?.pooled
-      : replayState?.pooled;
+  let available: PooledResources = { gpu: 0, lic: 0, io: 0 };
+  let rows: BankerRow[] = [];
+  let sequence: string[] | null = null;
+  let denials: { t: number; job: string; request?: PooledResources }[] = [];
+  let bankerMode: string | undefined;
 
-  const isSafe =
-    mode === 'live'
-      ? liveState?.banker_safe_sequence !== null
-      : replayState?.banker_safe !== false;
+  if (live && liveState) {
+    available = liveState.pooled.available;
+    // The live Banker registers every job; only those holding or claiming pooled resources matter here.
+    rows = liveState.banker.jobs.filter(
+      (r) => r.allocation.gpu + r.allocation.lic + r.allocation.io + r.need.gpu + r.need.lic + r.need.io > 0,
+    );
+    sequence = liveState.banker_safe_sequence ?? null;
+    bankerMode = liveState.banker.mode;
+    denials = liveEvents
+      .filter((e) => e.type === 'BANKER_DENIED')
+      .slice(-6)
+      .reverse()
+      .map((e) => ({ t: e.t, job: e.job_id as string, request: e.details?.request }));
+  } else if (replayState) {
+    available = replayState.pooled.available;
+    rows = replayState.banker_rows;
+    sequence = replayState.safe_sequence;
+    bankerMode = profiles.find((p) => p.name === (replayState.active_profile_name || activeProfile))?.banker;
+    denials = replayState.denials.slice(0, 6).map((e: any) => ({ t: e.t, job: e.job_id, request: e.request }));
+  }
 
-  const safeSeq = mode === 'live' ? liveState?.banker_safe_sequence : null;
-  const deadlockedJobs = replayState?.deadlocked_jobs || [];
+  const safe = sequence !== null;
+  const unit = live ? 's' : unitOf(runResult);
 
   return (
-    <div className="plume-card rounded-2xl p-5 flex flex-col h-[420px]">
-      <div className="flex items-center justify-between pb-3 border-b border-white/[0.08] mb-4">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            {isSafe ? <ShieldCheck className="w-4 h-4" /> : <ShieldAlert className="w-4 h-4 text-rose-400" />}
-          </div>
-          <div>
-            <h2 className="text-sm font-semibold text-white tracking-tight">
-              Banker Safety & Deadlock Monitor
-            </h2>
-            <p className="text-xs text-slate-400">
-              Continuous discrete state evaluation
-            </p>
-          </div>
-        </div>
-
-        <div
-          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${
-            isSafe
-              ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
-              : 'bg-rose-500/10 text-rose-300 border-rose-500/25'
-          }`}
-        >
-          {isSafe ? 'Safe State' : 'Deadlock Cycle Detected'}
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto space-y-3.5 pr-1">
-        {/* Available Vector Card */}
-        <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-          <span className="text-xs text-slate-400 block mb-2 font-medium">
-            Available Resource Vector (A):
-          </span>
-          <div className="grid grid-cols-3 gap-2.5 text-center">
-            <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.06]">
-              <span className="text-slate-400 block text-[11px] mb-0.5">GPU</span>
-              <span className="text-emerald-400 font-bold font-mono text-base">
-                {pooled?.available.gpu ?? 0}
-              </span>
-            </div>
-            <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.06]">
-              <span className="text-slate-400 block text-[11px] mb-0.5">Licenses</span>
-              <span className="text-sky-400 font-bold font-mono text-base">
-                {pooled?.available.lic ?? 0}
-              </span>
-            </div>
-            <div className="p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.06]">
-              <span className="text-slate-400 block text-[11px] mb-0.5">I/O Slots</span>
-              <span className="text-amber-400 font-bold font-mono text-base">
-                {pooled?.available.io ?? 0}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Safe Sequence Display */}
-        <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-          <span className="text-xs text-slate-400 block mb-2 font-medium">
-            Dijkstra-Habermann Safe Sequence:
-          </span>
-          {safeSeq && safeSeq.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              {safeSeq.map((pid, idx) => (
-                <React.Fragment key={pid}>
-                  <span className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono font-medium">
-                    {pid}
-                  </span>
-                  {idx < safeSeq.length - 1 && (
-                    <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
-                  )}
-                </React.Fragment>
-              ))}
-            </div>
+    <section className={`panel ${safe ? '' : 'banker-unsafe'}`} aria-labelledby="banker-heading">
+      <SectionHeading
+        id="banker-heading"
+        kicker={`Deadlock avoidance${bankerMode ? ` · Banker ${bankerMode}` : ''}`}
+        title="Banker's algorithm"
+        actions={
+          safe ? (
+            <span className="chip">
+              <ShieldCheck /> Safe state
+            </span>
           ) : (
-            <div className="text-xs text-slate-400 italic">
-              {isSafe
-                ? 'System in safe equilibrium. All concurrent claims satisfiable.'
-                : 'No safe sequence found. Mutual dependency detected in resource claim graph.'}
+            <span className="chip warn">
+              <ShieldAlert /> Unsafe state
+            </span>
+          )
+        }
+      />
+      <div className="panel-body grid-2" style={{ alignItems: 'start' }}>
+        <div className="stack" style={{ gap: 16 }}>
+          <div>
+            <div className="field-label" style={{ marginBottom: 8 }}>
+              Available vector (GPU, licenses, I/O)
+            </div>
+            <div className="vector">
+              <div>
+                <span>GPU</span>
+                <b>{available.gpu}</b>
+              </div>
+              <div>
+                <span>Licenses</span>
+                <b>{available.lic}</b>
+              </div>
+              <div>
+                <span>I/O slots</span>
+                <b>{available.io}</b>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="field-label" style={{ marginBottom: 8 }}>
+              Safe sequence
+            </div>
+            {rows.length === 0 ? (
+              <p className="help">No job holds or claims pooled resources right now, so any order is safe.</p>
+            ) : safe ? (
+              <div className="safe-seq" aria-label={`Safe sequence: ${sequence!.join(', ')}`}>
+                {sequence!.map((id, i) => (
+                  <React.Fragment key={id}>
+                    <button className="chip mono" onClick={() => setSelectedJobId(id)}>
+                      {id}
+                    </button>
+                    {i < sequence!.length - 1 && <ArrowRight aria-hidden="true" />}
+                  </React.Fragment>
+                ))}
+              </div>
+            ) : (
+              <div className="notice" role="status">
+                <ShieldAlert />
+                <span>
+                  No safe sequence: with the current Available vector some job's Need can never be met, so the
+                  system could deadlock. {live ? '' : 'Banker mode "off" lets the simulator reach states like this.'}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="field-label" style={{ marginBottom: 8 }}>
+              Recent unsafe-request denials
+            </div>
+            {denials.length === 0 ? (
+              <p className="help">None so far.</p>
+            ) : (
+              <ul className="stack" style={{ gap: 6, listStyle: 'none', padding: 0, margin: 0 }}>
+                {denials.map((d, i) => (
+                  <li key={i} className="flex items-center gap-2 text-[12px]">
+                    <span className="chip warn">
+                      <ShieldAlert /> denied
+                    </span>
+                    <span className="mono">{fmtT(d.t, unit)}</span>
+                    <button className="mono underline" onClick={() => setSelectedJobId(d.job)}>
+                      {d.job}
+                    </button>
+                    {d.request && <span className="mono" style={{ color: 'var(--faint)' }}>{vec(d.request)}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <div className="field-label" style={{ marginBottom: 8 }}>
+            Allocation and Need (Need = Max − Allocation)
+          </div>
+          {rows.length === 0 ? (
+            <EmptyState>No jobs are holding pooled resources at this moment.</EmptyState>
+          ) : (
+            <div className="table-wrap" style={{ maxHeight: 300, overflowY: 'auto' }}>
+              <table className="data-table">
+                <caption className="sr-only">Pooled resource allocation and remaining need per job, as (GPU, licenses, I/O)</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Job</th>
+                    <th scope="col">State</th>
+                    <th scope="col" className="num">Allocation</th>
+                    <th scope="col" className="num">Need</th>
+                    <th scope="col" className="num">Order</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const pos = sequence ? sequence.indexOf(r.id) : -1;
+                    return (
+                      <tr key={r.id}>
+                        <td>
+                          <button className="mono underline" onClick={() => setSelectedJobId(r.id)}>
+                            {r.id}
+                          </button>
+                        </td>
+                        <td>{r.state}</td>
+                        <td className="num">{vec(r.allocation)}</td>
+                        <td className="num">{vec(r.need)}</td>
+                        <td className="num">{pos >= 0 ? pos + 1 : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
-
-        {/* Deadlock Victim Alert if applicable */}
-        {deadlockedJobs.length > 0 && (
-          <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/25 text-xs">
-            <div className="flex items-center gap-2 font-semibold text-rose-300 mb-1">
-              <AlertOctagon className="w-4 h-4 text-rose-400" />
-              <span>Deadlock Recovery Invoked</span>
-            </div>
-            <p className="text-slate-300 mb-2">
-              Cross-holding cycle broken by preemption/termination. Selected victims:
-            </p>
-            <div className="flex gap-2">
-              {deadlockedJobs.map((vid) => (
-                <span
-                  key={vid}
-                  className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-200 border border-rose-500/40 font-mono font-bold"
-                >
-                  {vid}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Invariant Note */}
-        <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] text-xs text-slate-400">
-          <p className="font-medium text-slate-300 mb-1">Safety Invariant (OS Spec §14):</p>
-          <p className="text-[11px] leading-relaxed">
-            Need[i, r] = Max[i, r] − Alloc[i, r]. Requests are granted only if a deterministic sequence satisfies all pending maximum claims.
-          </p>
-        </div>
       </div>
-    </div>
+    </section>
   );
 };

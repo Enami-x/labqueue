@@ -5,6 +5,7 @@ app/api/runs.py – Run and batch endpoints.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -21,6 +22,7 @@ from engine.schedule import Schedule
 from engine.workloads import SCENARIOS, generate_workload, workload_from_dict
 
 router = APIRouter(prefix="/api", tags=["runs"])
+logger = logging.getLogger("labqueue.runs")
 
 # Profile name recorded for runs driven by the saved calendar schedule.
 SCHEDULE_RUN_NAME = "calendar_schedule"
@@ -108,10 +110,20 @@ def create_runs(req: RunRequest, session: Session = Depends(get_session)):
 
     results = []
     for label, policy in targets:
-        result = engine_run(
-            cluster, jobs, policy, seed=req.seed, node_events=node_events,
-            resolve_profile=lambda n: resolve_profile(n, session),
-        )
+        try:
+            result = engine_run(
+                cluster, jobs, policy, seed=req.seed, node_events=node_events,
+                resolve_profile=lambda n: resolve_profile(n, session),
+            )
+        except Exception as e:
+            # Known engine defect on some profile/workload combinations (see README,
+            # "Known issues"); report it instead of an opaque 500.
+            logger.exception("Simulation engine failed for %s", label)
+            raise HTTPException(
+                status_code=500,
+                detail=f"The simulation engine failed running '{label}' on this workload ({e}). "
+                       "Try another profile or seed.",
+            )
         run_rec = RunRecord(
             run_id=result.run_id,
             workload_id=effective_wid,

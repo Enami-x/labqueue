@@ -13,6 +13,12 @@
   --cream: #f4f2e9;
   --orange: #ffb682;
   --lavender: #b3b2ef;
+  --ink-2: #aec0ba;   /* secondary text: >= 6.5:1 on every surface */
+  --faint: #8fa79f;   /* captions: >= 5.3:1 on every surface */
+  --danger: #f4a3b0;
+  --panel: rgba(7, 43, 36, 0.75);
+  --field: rgba(0, 0, 0, 0.25);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 * {
@@ -124,7 +130,7 @@ button {
   border: 0;
   background: transparent;
   padding: 8px 13px;
-  color: #a8b9b3;
+  color: var(--faint);
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -172,7 +178,7 @@ button {
 .mode-toggle button {
   border: 0;
   background: transparent;
-  color: #8ca39b;
+  color: var(--faint);
   border-radius: 999px;
   padding: 7px 11px;
   font-size: 11px;
@@ -423,7 +429,7 @@ button {
 .timeline-times {
   display: flex;
   justify-content: space-between;
-  color: #789188;
+  color: var(--faint);
   font-size: 10px;
   margin-bottom: 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -477,7 +483,7 @@ button {
 }
 
 .speed-control > span {
-  color: #718d84;
+  color: var(--faint);
   font-size: 10px;
   margin-right: 4px;
 }
@@ -485,7 +491,7 @@ button {
 .speed {
   border: 0;
   background: transparent;
-  color: #799189;
+  color: var(--faint);
   font-size: 11px;
   padding: 6px 8px;
   border-radius: 5px;
@@ -523,7 +529,7 @@ button {
 }
 
 .metric-label {
-  color: #83a49a;
+  color: var(--faint);
   font-size: 10px;
   line-height: 1.3;
   text-transform: uppercase;
@@ -548,7 +554,7 @@ button {
 }
 
 .metric-detail {
-  color: #69837b;
+  color: var(--faint);
   font-size: 10px;
 }
 
@@ -584,7 +590,7 @@ button {
   display: inline-flex;
   gap: 7px;
   align-items: center;
-  color: #87a99b;
+  color: var(--faint);
   font-size: 10px;
   font-weight: 500;
 }
@@ -637,7 +643,7 @@ button {
 
 .node-top > div > span {
   font-size: 10px;
-  color: #77958a;
+  color: var(--faint);
 }
 
 .node-status {
@@ -668,7 +674,7 @@ button {
 .resource > div {
   display: flex;
   justify-content: space-between;
-  color: #7e9e93;
+  color: var(--faint);
   font-size: 10px;
   margin-bottom: 5px;
 }
@@ -759,7 +765,7 @@ button {
 }
 
 .gauge-caption {
-  color: #78958a;
+  color: var(--faint);
   display: block;
   font-size: 10px;
   margin-top: 7px;
@@ -809,7 +815,7 @@ button {
 }
 
 .safety-card span {
-  color: #8daf9f;
+  color: var(--faint);
   font-size: 10px;
 }
 
@@ -833,7 +839,7 @@ button {
 .legend {
   display: flex;
   gap: 14px;
-  color: #83a098;
+  color: var(--faint);
   font-size: 10px;
   align-items: center;
 }
@@ -880,7 +886,7 @@ button {
 }
 
 .gantt-axis {
-  color: #6f8c82;
+  color: var(--faint);
   font-size: 9px;
   margin-bottom: 9px;
   display: flex;
@@ -983,7 +989,7 @@ button {
 
 .queue-item > svg {
   width: 12px;
-  color: #5f7d71;
+  color: var(--faint);
   transform: rotate(-90deg);
 }
 
@@ -1011,7 +1017,7 @@ button {
 }
 
 .queue-job small {
-  color: #6d8a80;
+  color: var(--faint);
   font-size: 10px;
 }
 
@@ -1067,7 +1073,7 @@ button {
 
 .event-time {
   width: 65px;
-  color: #6e8c82;
+  color: var(--faint);
   font-size: 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
@@ -1125,18 +1131,18 @@ button {
 }
 
 .event-copy span {
-  color: #7f9a90;
+  color: var(--faint);
   font-size: 11px;
 }
 
 .event-arrow {
-  color: #5c7c70;
+  color: var(--faint);
 }
 
 .footer {
   display: flex;
   justify-content: space-between;
-  color: #58766d;
+  color: var(--faint);
   font-size: 10px;
   padding: 16px 0 32px;
   border-top: 1px solid var(--line);
@@ -1246,7 +1252,7 @@ button {
 }
 
 .owner span {
-  color: #87a399;
+  color: var(--faint);
   font-size: 11px;
 }
 
@@ -1255,7 +1261,7 @@ button {
   justify-content: space-between;
   padding: 10px 0;
   border-bottom: 1px solid rgba(182, 243, 207, 0.08);
-  color: #8da99e;
+  color: var(--faint);
   font-size: 11px;
 }
 
@@ -1290,7 +1296,7 @@ button {
 }
 
 .phase small {
-  color: #7f9c91;
+  color: var(--faint);
   font-size: 10px;
   margin-top: 3px;
 }

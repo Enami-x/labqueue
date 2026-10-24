@@ -10,7 +10,9 @@ import { ScenarioLabPage } from './pages/ScenarioLabPage';
 import { LiveConsolePage } from './pages/LiveConsolePage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { TabKey } from './store/useLabStore';
+import { TabKey, tabFromHash } from './store/useLabStore';
+import { ConfirmDialog, Toaster } from './components/ui';
+import { JobDrawer } from './components/JobDrawer';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 
 const PAGES: Record<TabKey, { label: string; component: React.FC }> = {
@@ -25,39 +27,41 @@ const PAGES: Record<TabKey, { label: string; component: React.FC }> = {
 };
 
 export const App: React.FC = () => {
-  const { currentTab, initApp, loading, error } = useLabStore();
+  const { currentTab, initApp, loading, error, setTab } = useLabStore();
 
   useEffect(() => {
     initApp();
+    // Back/forward and manual hash edits switch tabs without pushing history.
+    const onHash = () => {
+      const tab = tabFromHash();
+      if (tab && tab !== useLabStore.getState().currentTab) setTab(tab, true);
+    };
+    if (!window.location.hash) window.history.replaceState(null, '', `#/${useLabStore.getState().currentTab}`);
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
   return (
     <div className="lab-app flex flex-col text-[#f5f4ed]">
-      {/* Top Floating Pill Navigation */}
       <Navbar />
 
-      {/* Global Error Notice if any */}
       {error && (
-        <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-4 p-3.5 rounded-xl bg-[#ffb682]/10 border border-[#ffb682]/30 flex items-center justify-between text-xs text-[#ffb682]">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-[#ffb682]" />
-            <span>{error}</span>
+        <div className="page-shell" style={{ paddingBottom: 0 }}>
+          <div className="notice" role="alert">
+            <AlertTriangle />
+            <span style={{ flex: 1 }}>{error}</span>
+            <button className="ghost-button" style={{ padding: '6px 10px' }} onClick={() => initApp()}>
+              Retry
+            </button>
           </div>
-          <button
-            onClick={() => initApp()}
-            className="underline hover:text-white transition font-medium cursor-pointer"
-          >
-            Retry Connection
-          </button>
         </div>
       )}
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col relative">
+      <main className="flex-1 flex flex-col relative" id="main">
         {loading && (
-          <div className="fixed top-5 right-8 z-50 flex items-center gap-2 bg-[#062b25]/90 backdrop-blur-md border border-[rgba(220,237,227,0.2)] px-4 py-1.5 rounded-full text-xs font-semibold text-[#b6f3cf] shadow-2xl">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#b6f3cf]" />
-            <span>Simulating...</span>
+          <div className="fixed bottom-5 left-5 z-50 flex items-center gap-2 bg-[#062b25]/90 backdrop-blur-md border border-[rgba(220,237,227,0.2)] px-4 py-1.5 rounded-full text-xs font-semibold text-[#b6f3cf] shadow-2xl" role="status">
+            <Loader2 className="w-3.5 h-3.5 spinner" aria-hidden="true" />
+            <span>Simulating…</span>
           </div>
         )}
 
@@ -69,6 +73,10 @@ export const App: React.FC = () => {
           )}
         </ErrorBoundary>
       </main>
+
+      <JobDrawer />
+      <Toaster />
+      <ConfirmDialog />
     </div>
   );
 };
