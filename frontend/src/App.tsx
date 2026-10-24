@@ -9,7 +9,20 @@ import { CalendarPage } from './pages/CalendarPage';
 import { ScenarioLabPage } from './pages/ScenarioLabPage';
 import { LiveConsolePage } from './pages/LiveConsolePage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { TabKey } from './store/useLabStore';
 import { AlertTriangle, Loader2 } from 'lucide-react';
+
+const PAGES: Record<TabKey, { label: string; component: React.FC }> = {
+  overview: { label: 'Overview', component: OverviewPage },
+  compare: { label: 'Compare', component: ComparePage },
+  profiles: { label: 'Profiles', component: ProfileExplorerPage },
+  builder: { label: 'Builder', component: ProfileBuilderPage },
+  calendar: { label: 'Calendar', component: CalendarPage },
+  scenarios: { label: 'Scenario lab', component: ScenarioLabPage },
+  live: { label: 'Live Console', component: LiveConsolePage },
+  analytics: { label: 'Analytics', component: AnalyticsPage },
+};
 
 export const App: React.FC = () => {
   const { currentTab, initApp, loading, error } = useLabStore();
@@ -48,42 +61,13 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {currentTab === 'overview' && <OverviewPage />}
-        {currentTab === 'compare' && (
-          <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-6 pb-12">
-            <ComparePage />
-          </div>
-        )}
-        {currentTab === 'profiles' && (
-          <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-6 pb-12">
-            <ProfileExplorerPage />
-          </div>
-        )}
-        {currentTab === 'builder' && (
-          <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-6 pb-12">
-            <ProfileBuilderPage />
-          </div>
-        )}
-        {currentTab === 'calendar' && (
-          <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-6 pb-12">
-            <CalendarPage />
-          </div>
-        )}
-        {currentTab === 'scenarios' && (
-          <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-6 pb-12">
-            <ScenarioLabPage />
-          </div>
-        )}
-        {currentTab === 'live' && (
-          <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-6 pb-12">
-            <LiveConsolePage />
-          </div>
-        )}
-        {currentTab === 'analytics' && (
-          <div className="w-[min(1480px,calc(100%-32px))] mx-auto mt-6 pb-12">
-            <AnalyticsPage />
-          </div>
-        )}
+        <ErrorBoundary scope="page" key={currentTab} name={PAGES[currentTab].label}>
+          {currentTab === 'overview' ? (
+            <OverviewPage />
+          ) : (
+            <div className="page-shell">{React.createElement(PAGES[currentTab].component)}</div>
+          )}
+        </ErrorBoundary>
       </main>
     </div>
   );

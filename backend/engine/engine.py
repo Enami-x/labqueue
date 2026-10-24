@@ -50,7 +50,10 @@ class Engine:
         seed: int = 0,
         record_events: bool = True,
         node_events: Optional[List[Dict[str, Any]]] = None,
+        resolve_profile: Optional[Callable[[str], Optional[Profile]]] = None,
     ) -> "RunResult":
+        """resolve_profile: optional lookup used by a Schedule to find profiles
+        that aren't built in (e.g. custom profiles stored in the DB)."""
         from engine.model import RunResult
 
         rng = random.Random(seed)
@@ -65,6 +68,10 @@ class Engine:
         last_trigger_time: Dict[str, int] = {}
 
         def _resolve_profile(name: str) -> Profile:
+            if resolve_profile is not None:
+                found = resolve_profile(name)
+                if found is not None:
+                    return found
             if name in BASE_PROFILE_MAP:
                 return BASE_PROFILE_MAP[name]
             for p in all_profiles():
@@ -114,6 +121,7 @@ class Engine:
         ts_queue_len: List[int]   = []
         ts_util:      List[float] = []
         ts_frag:      List[float] = []
+        ts_t:         List[int]   = []
         last_ts_sample = -1
 
         finish_events: Dict[str, int]  = {}
@@ -403,6 +411,7 @@ class Engine:
             nonlocal last_ts_sample
             if now - last_ts_sample >= 5:
                 last_ts_sample = now
+                ts_t.append(now)
                 ts_queue_len.append(len(eligible_set))
                 total_cpu = sum(n.cpu for n in cluster.nodes if node_up.get(n.id, False))
                 used_cpu = sum(n.cpu - free_cpu.get(n.id, n.cpu)
@@ -470,7 +479,7 @@ class Engine:
 
         def _build_state(t: int) -> Dict[str, Any]:
             q_jobs = [jobs[jid] for jid in eligible_set]
-            slacks = [j.slack(t) for j in q_jobs if j.deadline is not None]
+            slacks = [j.slack_at(t) for j in q_jobs if j.deadline is not None]
             tot_cpu = max(1, sum(n.cpu for n in cluster.nodes))
             used_cpu = sum(n.cpu - free_cpu[n.id] for n in cluster.nodes)
             role_counts: Dict[str, int] = defaultdict(int)
@@ -821,6 +830,7 @@ class Engine:
             frag_time_series=ts_frag,
             util_time_series=ts_util,
             queue_len_time_series=ts_queue_len,
+            sample_times=ts_t,
         )
 
         if record_events:
@@ -849,5 +859,7 @@ def run(
     seed: int = 0,
     record_events: bool = True,
     node_events: Optional[List[Dict[str, Any]]] = None,
+    resolve_profile: Optional[Callable[[str], Optional[Profile]]] = None,
 ) -> "RunResult":
-    return Engine().run(cluster, workload, profile, seed=seed, record_events=record_events, node_events=node_events)
+    return Engine().run(cluster, workload, profile, seed=seed, record_events=record_events,
+                        node_events=node_events, resolve_profile=resolve_profile)

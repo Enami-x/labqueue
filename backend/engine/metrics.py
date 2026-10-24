@@ -76,6 +76,7 @@ def compute_metrics(
     frag_time_series: List[float],     # fragmentation sampled every 5 units
     util_time_series: List[float],     # utilisation sampled every 5 units
     queue_len_time_series: List[int],
+    sample_times: Optional[List[int]] = None,  # sim minute of each sample above
 ) -> Dict:
     """Compute all metrics for a completed run."""
 
@@ -165,6 +166,7 @@ def compute_metrics(
         "total_jobs":         len(jobs),
         "by_role":            by_role,
         "time_series": {
+            "t":            list(sample_times or []),
             "queue_len":    queue_len_time_series,
             "utilization":  util_time_series,
             "fragmentation": frag_time_series,

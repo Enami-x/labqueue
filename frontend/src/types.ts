@@ -77,6 +77,7 @@ export interface PriorityWeights {
 }
 
 export interface Profile {
+  id?: number | null;
   name: string;
   family: string;
   scheduler: SchedulerKind;
@@ -91,6 +92,7 @@ export interface Profile {
   reserved_pct: number;
   preempt_by?: Role[] | null;
   backfill: boolean;
+  is_custom?: boolean;
 }
 
 export interface SimEvent {
@@ -102,37 +104,68 @@ export interface SimEvent {
   [key: string]: any;
 }
 
+export interface RoleMetrics {
+  count: number;
+  avg_wait: number;
+  p95_wait: number;
+  max_wait: number;
+  avg_turnaround: number;
+  avg_response: number;
+  deadline_misses: number;
+}
+
+/** Metrics from engine/metrics.py. All times are simulated minutes. */
 export interface RunMetrics {
+  avg_wait: number;
+  p95_wait: number;
+  p99_wait: number;
+  max_wait: number;
+  avg_turnaround: number;
+  avg_response: number;
   makespan: number;
   throughput: number;
+  utilization: number;
   cpu_util_avg: number;
-  mem_util_avg: number;
-  avg_wait: number;
-  p95_wait?: number;
-  p99_wait?: number;
+  avg_fragmentation: number;
+  deadline_misses: number;
+  deadline_miss_rate: number;
+  starvation_count: number;
+  starved_jobs: number;
+  fairness_index: number;
   jains_fairness: number;
-  deadlocks_detected: number;
-  banker_denials: number;
   preemptions: number;
   restarts: number;
-  starved_jobs: number;
+  deadlocks_detected: number;
+  banker_denials: number;
   jobs_completed: number;
   total_jobs: number;
-  wait_by_role: Record<string, number>;
+  by_role: Record<string, RoleMetrics>;
   time_series?: {
     t: number[];
     queue_len: number[];
-    util: number[];
-    frag: number[];
+    utilization: number[];
+    fragmentation: number[];
   };
 }
 
+export interface WorkloadSummary {
+  scenario?: string | null;
+  seed?: number | null;
+  jobs: Job[];
+  node_events: { at: number; node_id: number; type: string }[];
+}
+
 export interface RunResult {
+  id?: number;
   run_id: string;
   profile_name: string;
   seed: number;
   metrics: RunMetrics;
   events: SimEvent[];
+  event_log_hash?: string;
+  workload?: WorkloadSummary | null;
+  /** Set for calendar-driven runs: the profile active at T=0. */
+  initial_profile?: string;
 }
 
 export interface LiveStateSnapshot {
@@ -185,28 +218,42 @@ export interface LiveStateSnapshot {
   }[];
 }
 
+// ---------------------------------------------------------------------------
+// Calendar schedule (mirrors engine/schedule.py)
+// ---------------------------------------------------------------------------
+
 export interface CalendarSlot {
   day_of_week: number; // 0=Mon, 6=Sun
   start_minute: number;
   end_minute: number;
   profile_name: string;
-  label: string;
+}
+
+export type ConditionField = 'queue_len' | 'nodes_down' | 'min_slack' | 'util' | 'running_count';
+
+export type ConditionOp = '<' | '>' | '<=' | '>=' | '==' | '!=';
+
+export interface TriggerCondition {
+  field: ConditionField | string;
+  op: ConditionOp;
+  value: number;
 }
 
 export interface TriggerRule {
-  id: string;
-  name: string;
   priority: number;
+  conditions: TriggerCondition[];
   profile_name: string;
-  condition: {
-    type: 'nodes_down' | 'queue_length' | 'gpu_util' | 'starvation_count';
-    op: '>' | '>=' | '<' | '<=' | '==';
-    threshold: number;
-  };
+  cooldown: number;
 }
 
 export interface ScheduleConfig {
-  default_profile: string;
+  default_profile_name: string;
   slots: CalendarSlot[];
-  triggers: TriggerRule[];
+  rules: TriggerRule[];
+}
+
+/** One entry of a FastAPI-style 422 body: {"detail": [{loc, msg}]}. */
+export interface FieldError {
+  loc: (string | number)[];
+  msg: string;
 }

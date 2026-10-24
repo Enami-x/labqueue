@@ -3,6 +3,10 @@ import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {
   children: ReactNode;
+  /** 'page' renders an inline notice so the navbar stays usable. */
+  scope?: 'app' | 'page';
+  /** Label used in the page-level notice, e.g. "Analytics". */
+  name?: string;
 }
 
 interface State {
@@ -27,7 +31,31 @@ export class ErrorBoundary extends Component<Props, State> {
     this.setState({ error, errorInfo });
   }
 
+  private reset = () => this.setState({ hasError: false, error: null, errorInfo: null });
+
   public render() {
+    if (this.state.hasError && this.props.scope === 'page') {
+      return (
+        <div className="page-shell">
+          <div className="panel p-6 max-w-xl" role="alert">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-[#ffb682]" />
+              <h2 className="text-base font-semibold">{this.props.name || 'This page'} failed to render</h2>
+            </div>
+            {this.state.error && (
+              <pre className="mt-3 bg-black/30 p-3 rounded-lg border border-[rgba(220,237,227,0.12)] text-xs font-mono text-[#ffb682] whitespace-pre-wrap">
+                {this.state.error.toString()}
+              </pre>
+            )}
+            <p className="mt-3 text-sm text-[#aec0ba]">The rest of LabQueue still works. Pick another tab, or retry this one.</p>
+            <button onClick={this.reset} className="ghost-button mt-4 px-4 py-2 text-xs">
+              <RefreshCw /> Try again
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-[#031f1b] flex items-center justify-center p-6 text-[#f5f4ed]">

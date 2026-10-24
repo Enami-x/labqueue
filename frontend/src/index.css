@@ -229,6 +229,12 @@ button {
   height: 15px;
 }
 
+.page-shell {
+  width: min(1480px, calc(100% - 32px));
+  margin: 24px auto 0;
+  padding-bottom: 48px;
+}
+
 .hero-head,
 .scrubber,
 .metrics-grid,
@@ -369,6 +375,37 @@ button {
   transition: all 0.15s ease;
 }
 
+.primary-button {
+  border: 0;
+  border-radius: 8px;
+  background: var(--mint);
+  color: var(--deep);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: filter 0.15s ease, opacity 0.15s ease;
+}
+
+.primary-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.primary-button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.primary-button:disabled,
+.ghost-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .play-button:hover {
   filter: brightness(1.1);
   transform: scale(1.02);
@@ -425,6 +462,10 @@ button {
   height: 12px;
   background: #ffb682;
   border-radius: 1px;
+}
+
+.timeline-mark.policy {
+  background: var(--lavender);
 }
 
 .speed-control {

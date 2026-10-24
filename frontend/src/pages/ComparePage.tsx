@@ -1,6 +1,70 @@
 import React, { useEffect } from 'react';
 import { useLabStore } from '../store/useLabStore';
-import { Layers, ArrowUpDown, Play, Check, TrendingUp, Sparkles } from 'lucide-react';
+import { Layers, ArrowUpDown, Play, Check, Sparkles } from 'lucide-react';
+import { Profile, RunResult } from '../types';
+
+interface Insight {
+  title: string;
+  body: string;
+  tone: 'good' | 'bad' | 'neutral';
+}
+
+const fmtMin = (v: number) => `${v.toFixed(1)} min`;
+
+/** Plain-language findings derived from the runs actually on screen. */
+export function computeInsights(runs: RunResult[], profilesByName: Record<string, Profile>): Insight[] {
+  if (runs.length < 2) return [];
+  const [base, ...others] = runs;
+  const b = base.metrics;
+  const insights: Insight[] = [];
+
+  const bestWait = [...others].sort((x, y) => x.metrics.avg_wait - y.metrics.avg_wait)[0];
+  const waitDelta = bestWait.metrics.avg_wait - b.avg_wait;
+  if (waitDelta < 0) {
+    const pct = b.avg_wait > 0 ? ` (${Math.round((-waitDelta / b.avg_wait) * 100)}%)` : '';
+    insights.push({
+      title: 'Average wait',
+      body: `${bestWait.profile_name} cut average wait by ${fmtMin(-waitDelta)}${pct} vs ${base.profile_name} (${fmtMin(b.avg_wait)} → ${fmtMin(bestWait.metrics.avg_wait)}).`,
+      tone: 'good',
+    });
+  } else {
+    insights.push({
+      title: 'Average wait',
+      body: `No policy beat the baseline ${base.profile_name} (${fmtMin(b.avg_wait)}); the closest was ${bestWait.profile_name} at ${fmtMin(bestWait.metrics.avg_wait)}.`,
+      tone: 'neutral',
+    });
+  }
+
+  const fairest = [...runs].sort((x, y) => y.metrics.jains_fairness - x.metrics.jains_fairness)[0];
+  const leastFair = [...runs].sort((x, y) => x.metrics.jains_fairness - y.metrics.jains_fairness)[0];
+  insights.push({
+    title: 'Fairness',
+    body:
+      fairest === leastFair || fairest.metrics.jains_fairness - leastFair.metrics.jains_fairness < 0.005
+        ? `All policies are equally fair here (Jain's index ≈ ${fairest.metrics.jains_fairness.toFixed(3)}).`
+        : `${fairest.profile_name} is the fairest (Jain's ${fairest.metrics.jains_fairness.toFixed(3)}); ${leastFair.profile_name} is the least fair (${leastFair.metrics.jains_fairness.toFixed(3)}).`,
+    tone: 'neutral',
+  });
+
+  const withDeadlocks = runs.filter((r) => r.metrics.deadlocks_detected > 0);
+  if (withDeadlocks.length) {
+    insights.push({
+      title: 'Deadlocks',
+      body: withDeadlocks
+        .map((r) => `${r.profile_name} hit ${r.metrics.deadlocks_detected} deadlock${r.metrics.deadlocks_detected === 1 ? '' : 's'} (Banker ${profilesByName[r.profile_name]?.banker ?? '?'})`)
+        .join('; ') + '.',
+      tone: 'bad',
+    });
+  } else {
+    const denials = runs.reduce((n, r) => n + r.metrics.banker_denials, 0);
+    insights.push({
+      title: 'Deadlocks',
+      body: `No deadlocks in any run. The Banker's algorithm denied ${denials} unsafe request${denials === 1 ? '' : 's'} across these policies.`,
+      tone: 'good',
+    });
+  }
+  return insights;
+}
 
 export const ComparePage: React.FC = () => {
   const {
@@ -24,6 +88,8 @@ export const ComparePage: React.FC = () => {
     .filter(Boolean);
 
   const baseline = runsList[0]?.metrics;
+  const profilesByName = Object.fromEntries(profiles.map((p) => [p.name, p]));
+  const insights = computeInsights(runsList, profilesByName);
 
   return (
     <div className="flex-1 p-6 max-w-[1600px] w-full mx-auto space-y-6 overflow-y-auto">
@@ -137,7 +203,7 @@ export const ComparePage: React.FC = () => {
                     </div>
                   </td>
                   <td className="py-3.5 px-3.5 text-sky-400 font-mono font-medium">
-                    {run.events?.[0]?.details?.scheduler || 'Dynamic'}
+                    {profilesByName[run.profile_name]?.scheduler ?? '—'}
                   </td>
                   <td className="py-3.5 px-3.5 font-mono">
                     <span className="text-white font-bold">{makespan.toFixed(0)}m</span>
@@ -226,24 +292,12 @@ export const ComparePage: React.FC = () => {
           </h3>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1 text-xs text-slate-300">
-          <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-            <span className="font-semibold text-sky-400 block mb-1">SJF / SRTF Efficiency</span>
-            <p className="text-slate-400 leading-relaxed">
-              Dramatically minimizes average wait time and maximizes cluster throughput, but can starve longer research training jobs if aging rate is 0.
-            </p>
-          </div>
-          <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-            <span className="font-semibold text-emerald-400 block mb-1">FCFS with User Quotas</span>
-            <p className="text-slate-400 leading-relaxed">
-              Maximizes cohort fairness (Jain's index &gt; 0.95), preventing aggressive users from hoarding pooled GPUs.
-            </p>
-          </div>
-          <div className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-            <span className="font-semibold text-rose-400 block mb-1">Banker Algorithm Off</span>
-            <p className="text-slate-400 leading-relaxed">
-              Allows circular waiting on cross-resource demands (GPU vs Lic), triggering deadlock cycles and requiring victim job termination.
-            </p>
-          </div>
+          {insights.map((ins) => (
+            <div key={ins.title} className="p-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+              <span className="font-semibold text-sky-400 block mb-1">{ins.title}</span>
+              <p className="text-slate-400 leading-relaxed">{ins.body}</p>
+            </div>
+          ))}
         </div>
       </div>
     </div>

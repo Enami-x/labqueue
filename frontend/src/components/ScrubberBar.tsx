@@ -59,11 +59,13 @@ export const ScrubberBar: React.FC = () => {
   };
 
   // Find deadlock event times
-  const deadlockTimes: number[] = [];
-  if (runResult?.events) {
+  const markers: { pct: number; kind: 'deadlock' | 'policy'; label: string }[] = [];
+  if (runResult?.events && maxScrubberTime > 0) {
     for (const ev of runResult.events) {
-      if (ev.type === 'DEADLOCK_DETECTED' && maxScrubberTime > 0) {
-        deadlockTimes.push((ev.t / maxScrubberTime) * 100);
+      if (ev.type === 'DEADLOCK_DETECTED') {
+        markers.push({ pct: (ev.t / maxScrubberTime) * 100, kind: 'deadlock', label: `Deadlock at T+${ev.t}m` });
+      } else if (ev.type === 'PROFILE_SWITCHED') {
+        markers.push({ pct: (ev.t / maxScrubberTime) * 100, kind: 'policy', label: `T+${ev.t}m: policy → ${ev.to}` });
       }
     }
   }
@@ -131,12 +133,12 @@ export const ScrubberBar: React.FC = () => {
           aria-valuemax={maxScrubberTime}
         >
           <span className="timeline-dot" style={{ left: `${Math.min(100, Math.max(0, progressPct))}%` }} />
-          {deadlockTimes.map((pct, idx) => (
+          {markers.map((m, idx) => (
             <span
               key={idx}
-              className="timeline-mark"
-              style={{ left: `${pct}%` }}
-              title="Deadlock occurred"
+              className={`timeline-mark ${m.kind}`}
+              style={{ left: `${m.pct}%` }}
+              title={m.label}
             />
           ))}
         </div>

@@ -30,6 +30,8 @@ export const EventFeed: React.FC = () => {
       case 'BANKER_DENIED':
       case 'DEADLOCK_DETECTED':
         return 'orange';
+      case 'PROFILE_SWITCHED':
+        return 'violet';
       case 'NODE_FAILED':
       case 'JOB_PREEMPTED':
       case 'JOB_KILLED':
@@ -59,6 +61,10 @@ export const EventFeed: React.FC = () => {
         return `Victim ${ev.victim || ev.details?.victim || jid} flagged for recovery`;
       case 'NODE_FAILED':
         return `Node ${ev.node_id ?? ev.details?.node_id} experienced hardware outage`;
+      case 'PROFILE_SWITCHED':
+        return ev.to
+          ? `Policy ${ev.from} → ${ev.to} (${ev.reason === 'trigger' ? 'reactive rule' : ev.reason === 'calendar' ? 'calendar slot' : 'default'})`
+          : `Policy ${ev.details?.old_profile} → ${ev.details?.new_profile}`;
       default:
         return JSON.stringify(ev.details || {});
     }

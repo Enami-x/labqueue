@@ -292,7 +292,8 @@ export class ReplayEngine {
         }
 
         case 'PROFILE_SWITCHED': {
-          activeProfileName = evt.details?.new_profile || evt.new_profile || activeProfileName;
+          // Sim events carry {from, to, reason}; live events carry details.new_profile.
+          activeProfileName = evt.to || evt.details?.new_profile || activeProfileName;
           break;
         }
 

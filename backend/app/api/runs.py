@@ -5,21 +5,25 @@ app/api/runs.py – Run and batch endpoints.
 from __future__ import annotations
 
 import json
-import uuid
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from app.api.calendar import load_saved_schedule
+from app.api.profiles import resolve_profile
 from app.db import BatchRecord, RunRecord, WorkloadRecord, get_session
 from engine.engine import run as engine_run
 from engine.model import DEFAULT_CLUSTER, Cluster
-from engine.profiles import Profile, all_profiles, BASE_PROFILE_MAP
-from engine.workloads import workload_from_dict
+from engine.profiles import all_profiles
+from engine.schedule import Schedule
+from engine.workloads import SCENARIOS, generate_workload, workload_from_dict
 
 router = APIRouter(prefix="/api", tags=["runs"])
+
+# Profile name recorded for runs driven by the saved calendar schedule.
+SCHEDULE_RUN_NAME = "calendar_schedule"
 
 
 def _load_workload(session: Session, workload_id: int):
@@ -29,12 +33,19 @@ def _load_workload(session: Session, workload_id: int):
     return json.loads(rec.data)
 
 
+def _workload_summary(wl_data: dict) -> dict:
+    """The declared jobs (incl. phases / max_claim) and node events of a workload."""
+    return {
+        "scenario": wl_data.get("scenario"),
+        "seed": wl_data.get("seed"),
+        "jobs": wl_data.get("jobs", []),
+        "node_events": wl_data.get("node_events", []),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
-
-from engine.workloads import SCENARIOS, generate_workload, workload_from_dict
-
 
 class RunRequest(BaseModel):
     workload_id: Optional[int] = None
@@ -44,20 +55,24 @@ class RunRequest(BaseModel):
     seed: int = 0
     cluster: Optional[Dict[str, Any]] = None  # if None, use default
     n_jobs: Optional[int] = None
+    # Drive the run with the saved calendar schedule (slots + reactive rules)
+    # instead of a single fixed profile.
+    use_schedule: bool = False
 
 
 @router.post("/runs")
 def create_runs(req: RunRequest, session: Session = Depends(get_session)):
-    is_single_profile = bool(req.profile_name and not req.profile_names)
-    target_profile_names = [req.profile_name] if req.profile_name else (req.profile_names or [])
-
-    if not target_profile_names:
-        target_profile_names = ["practical_session"]
+    is_single_profile = bool(req.use_schedule or (req.profile_name and not req.profile_names))
 
     if req.workload_id is not None:
         wl_data = _load_workload(session, req.workload_id)
         effective_wid = req.workload_id
     elif req.scenario:
+        if req.scenario not in SCENARIOS:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Scenario '{req.scenario}' not found. Available: {', '.join(SCENARIOS)}",
+            )
         wl_data = generate_workload(req.scenario, n_jobs=req.n_jobs or 50, seed=req.seed)
         rec = WorkloadRecord(scenario=req.scenario, seed=req.seed, data=json.dumps(wl_data))
         session.add(rec)
@@ -70,32 +85,37 @@ def create_runs(req: RunRequest, session: Session = Depends(get_session)):
         effective_wid = 0
 
     jobs = workload_from_dict(wl_data)
+    node_events = wl_data.get("node_events") or None
 
     cluster = DEFAULT_CLUSTER
     if req.cluster:
         cluster = Cluster.model_validate(req.cluster)
 
-    results = []
-    for pname in target_profile_names:
-        # Find profile
-        profile = None
-        for p in all_profiles():
-            if p.name == pname:
-                profile = p
-                break
-        if profile is None:
-            from app.db import ProfileRecord
-            rec = session.exec(select(ProfileRecord).where(ProfileRecord.name == pname)).first()
-            if rec:
-                profile = Profile.from_json(rec.data)
-        if profile is None:
-            raise HTTPException(status_code=404, detail=f"Profile '{pname}' not found")
+    # (label, Profile | Schedule) pairs to run
+    targets: List[tuple] = []
+    if req.use_schedule:
+        schedule = load_saved_schedule(session)
+        if schedule is None:
+            raise HTTPException(status_code=404, detail="No calendar schedule has been saved yet")
+        targets.append((SCHEDULE_RUN_NAME, schedule))
+    else:
+        names = [req.profile_name] if req.profile_name else (req.profile_names or [])
+        for pname in names or ["practical_session"]:
+            profile = resolve_profile(pname, session)
+            if profile is None:
+                raise HTTPException(status_code=404, detail=f"Profile '{pname}' not found")
+            targets.append((pname, profile))
 
-        result = engine_run(cluster, jobs, profile, seed=req.seed)
+    results = []
+    for label, policy in targets:
+        result = engine_run(
+            cluster, jobs, policy, seed=req.seed, node_events=node_events,
+            resolve_profile=lambda n: resolve_profile(n, session),
+        )
         run_rec = RunRecord(
             run_id=result.run_id,
             workload_id=effective_wid,
-            profile_name=pname,
+            profile_name=label,
             seed=req.seed,
             metrics=json.dumps(result.metrics),
             event_log_hash=result.event_log_hash,
@@ -104,15 +124,19 @@ def create_runs(req: RunRequest, session: Session = Depends(get_session)):
         session.add(run_rec)
         session.commit()
         session.refresh(run_rec)
-        results.append({
+        out = {
             "id": run_rec.id,
             "run_id": result.run_id,
-            "profile_name": pname,
+            "profile_name": label,
             "seed": req.seed,
             "metrics": result.metrics,
             "event_log_hash": result.event_log_hash,
             "events": result.events,
-        })
+            "workload": _workload_summary(wl_data),
+        }
+        if isinstance(policy, Schedule):
+            out["initial_profile"] = policy.active_profile_name(0, {}, {}, 0)[0]
+        results.append(out)
 
     if is_single_profile and results:
         return results[0]
@@ -132,7 +156,9 @@ def get_run(run_id: str, session: Session = Depends(get_session)):
     rec = _find_run_record(session, run_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Run not found")
+    wl_rec = session.get(WorkloadRecord, rec.workload_id) if rec.workload_id else None
     return {
+        "workload": _workload_summary(json.loads(wl_rec.data)) if wl_rec else None,
         "id": rec.id,
         "run_id": rec.run_id,
         "profile_name": rec.profile_name,
@@ -162,14 +188,6 @@ def get_run_events(
 # ---------------------------------------------------------------------------
 # Batch
 # ---------------------------------------------------------------------------
-
-def _run_one(wl_data: dict, profile_json: str, seed: int) -> dict:
-    """Worker function for ProcessPoolExecutor."""
-    jobs = workload_from_dict(wl_data)
-    profile = Profile.from_json(profile_json)
-    result = engine_run(DEFAULT_CLUSTER, jobs, profile, seed=seed, record_events=False)
-    return {"profile": profile.name, "metrics": result.metrics}
-
 
 class BatchRequest(BaseModel):
     workload_ids: List[int]

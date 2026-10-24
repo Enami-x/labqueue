@@ -5,14 +5,27 @@ app/db.py – SQLite database setup with SQLModel.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+import os
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 
-DATABASE_URL = "sqlite:///./labqueue.db"
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+
+# Absolute path so the DB location doesn't depend on the working directory.
+# Override with LABQUEUE_DATABASE_URL (the test suite points it at a temp file).
+DATABASE_URL = os.environ.get(
+    "LABQUEUE_DATABASE_URL",
+    f"sqlite:///{(BACKEND_DIR / 'labqueue.db').as_posix()}",
+)
 engine = create_engine(DATABASE_URL, echo=False)
+
+
+def _utcnow_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -25,7 +38,7 @@ class ProfileRecord(SQLModel, table=True):
     family: str = Field(index=True)
     data: str  # JSON of Profile
     is_custom: bool = False
-    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = Field(default_factory=_utcnow_iso)
 
 
 class WorkloadRecord(SQLModel, table=True):
@@ -33,7 +46,7 @@ class WorkloadRecord(SQLModel, table=True):
     scenario: str
     seed: int
     data: str  # JSON of workload dict
-    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = Field(default_factory=_utcnow_iso)
 
 
 class RunRecord(SQLModel, table=True):
@@ -45,7 +58,7 @@ class RunRecord(SQLModel, table=True):
     metrics: str  # JSON
     event_log_hash: str = ""
     events: str = "[]"  # JSON (large; consider file storage for prod)
-    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = Field(default_factory=_utcnow_iso)
 
 
 class BatchRecord(SQLModel, table=True):
@@ -56,13 +69,13 @@ class BatchRecord(SQLModel, table=True):
     matrix: str = "{}"  # JSON: {scenario: {profile: metrics}}
     progress: int = 0
     total: int = 0
-    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = Field(default_factory=_utcnow_iso)
 
 
 class CalendarRecord(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     data: str  # JSON of Schedule
-    updated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    updated_at: str = Field(default_factory=_utcnow_iso)
 
 
 # ---------------------------------------------------------------------------

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useLabStore } from '../store/useLabStore';
-import { api } from '../services/api';
+import { api, ApiError } from '../services/api';
 import { Profile, SchedulerKind, PlacementKind, BankerMode, Role } from '../types';
 import { Zap, Play, CheckCircle2, AlertTriangle, Save } from 'lucide-react';
 
 export const ProfileBuilderPage: React.FC = () => {
-  const { runSimulation, setTab } = useLabStore();
+  const { runSimulation, refreshProfiles, setTab, profiles } = useLabStore();
 
   const [name, setName] = useState('custom_fair_sjf');
   const [family, setFamily] = useState('custom');
@@ -29,11 +29,14 @@ export const ProfileBuilderPage: React.FC = () => {
   const [backfill, setBackfill] = useState(true);
 
   const [statusMsg, setStatusMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [serverErrors, setServerErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   // Client-side validation
   const errors: string[] = [];
-  if (!name.trim()) errors.push('Profile name is required');
+  const normalizedName = name.trim().toLowerCase().replace(/\s+/g, '_');
+  if (!normalizedName) errors.push('Profile name is required');
+  else if (profiles.some((p) => p.name === normalizedName)) errors.push(`A profile named '${normalizedName}' already exists`);
   if (scheduler === 'RR' && (!quantum || quantum <= 0)) errors.push('RR requires quantum > 0');
   if (scheduler === 'FCFS' && backfill) errors.push('FCFS must have backfill disabled');
   if (reservedRole === '' && reservedPct > 0) {
@@ -46,7 +49,7 @@ export const ProfileBuilderPage: React.FC = () => {
     setStatusMsg(null);
 
     const profileData: Profile = {
-      name: name.trim().toLowerCase().replace(/\s+/g, '_'),
+      name: normalizedName,
       family,
       scheduler,
       quantum: scheduler === 'RR' ? quantum : null,
@@ -61,19 +64,21 @@ export const ProfileBuilderPage: React.FC = () => {
       quota_per_user: enableQuota ? quota : null,
       reserved_role: reservedRole ? (reservedRole as Role) : null,
       reserved_pct: reservedRole ? reservedPct : 0.0,
-      preempt_by: preemptive ? ['faculty', 'exam'] : null,
+      preempt_by: preemptive ? ['faculty', 'exam'] : [],
       backfill: scheduler === 'FCFS' ? false : backfill,
     };
 
+    setServerErrors([]);
     try {
-      await api.createProfile(profileData);
-      setStatusMsg({ type: 'ok', text: `Profile '${profileData.name}' saved and verified successfully!` });
-      await runSimulation(profileData.name);
-      setTimeout(() => {
-        setTab('overview');
-      }, 800);
+      const saved = await api.createProfile(profileData);
+      // Make the new profile visible in Profiles and every profile picker.
+      await refreshProfiles();
+      setStatusMsg({ type: 'ok', text: `Profile '${saved.name}' saved. Running it on the active scenario…` });
+      if (await runSimulation(saved.name)) setTab('overview');
     } catch (e: any) {
-      setStatusMsg({ type: 'err', text: e.message || 'Failed to save custom profile' });
+      const fieldMsgs = e instanceof ApiError ? e.fieldErrors.map((f) => f.msg) : [];
+      setServerErrors(fieldMsgs);
+      setStatusMsg({ type: 'err', text: fieldMsgs.length ? 'The backend rejected this profile:' : e.message || 'Failed to save custom profile' });
     } finally {
       setSaving(false);
     }
@@ -107,6 +112,11 @@ export const ProfileBuilderPage: React.FC = () => {
             <AlertTriangle className="w-4 h-4" />
           )}
           <span>{statusMsg.text}</span>
+          {serverErrors.length > 0 && (
+            <ul className="list-disc pl-5">
+              {serverErrors.map((m) => <li key={m}>{m}</li>)}
+            </ul>
+          )}
         </div>
       )}
 

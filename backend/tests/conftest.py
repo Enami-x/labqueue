@@ -2,6 +2,15 @@
 tests/conftest.py – Shared fixtures for pytest.
 """
 
+import os
+import tempfile
+from pathlib import Path
+
+# Point the app at a throwaway SQLite file *before* app.db is imported, so tests
+# never touch (or depend on) the developer's labqueue.db.
+_TEST_DB = Path(tempfile.mkdtemp(prefix="labqueue_test_")) / "test.db"
+os.environ["LABQUEUE_DATABASE_URL"] = f"sqlite:///{_TEST_DB.as_posix()}"
+
 import pytest
 from engine.model import Cluster, Node, PooledResources
 

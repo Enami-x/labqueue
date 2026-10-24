@@ -8,10 +8,11 @@ export const AnalyticsPage: React.FC = () => {
   const metrics = runResult?.metrics;
   const timeSeries = metrics?.time_series;
 
-  const waitByRole = metrics?.wait_by_role || {};
-  const roles = Object.keys(waitByRole);
-
-  const maxWait = Math.max(1, ...Object.values(waitByRole).map((v) => Number(v) || 0));
+  // Roles that had no completed jobs in this run carry no signal, so hide them.
+  const roleRows = Object.entries(metrics?.by_role || {})
+    .filter(([, r]) => r.count > 0)
+    .sort((a, b) => b[1].avg_wait - a[1].avg_wait);
+  const maxWait = Math.max(1, ...roleRows.map(([, r]) => r.avg_wait));
 
   return (
     <div className="flex-1 p-6 max-w-[1400px] w-full mx-auto space-y-6 overflow-y-auto">
@@ -55,7 +56,7 @@ export const AnalyticsPage: React.FC = () => {
               : '1.0'}x
           </div>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Ratio of extreme waiting times relative to median job wait.
+            P99 wait divided by the mean wait across completed jobs.
           </p>
         </div>
 
@@ -79,14 +80,14 @@ export const AnalyticsPage: React.FC = () => {
         </h2>
 
         <div className="space-y-3.5">
-          {roles.map((roleKey) => {
-            const val = Number(waitByRole[roleKey]) || 0;
+          {roleRows.map(([roleKey, r]) => {
+            const val = r.avg_wait;
             const pct = Math.round((val / maxWait) * 100);
             return (
               <div key={roleKey} className="space-y-1.5">
                 <div className="flex justify-between text-xs">
-                  <span className="uppercase font-semibold text-slate-300 w-28 tracking-wide">
-                    {roleKey}
+                  <span className="uppercase font-semibold text-slate-300 w-40 tracking-wide">
+                    {roleKey} <span className="normal-case font-normal text-slate-400">· {r.count} jobs</span>
                   </span>
                   <span className="text-sky-400 font-mono font-bold">{val.toFixed(1)} mins</span>
                 </div>

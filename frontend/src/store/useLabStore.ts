@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api } from '../services/api';
+import { api, ScenarioInfo } from '../services/api';
 import {
   ClusterModel,
   LiveStateSnapshot,
@@ -28,6 +28,7 @@ interface LabState {
   cluster: ClusterModel | null;
   profiles: Profile[];
   scenarios: string[];
+  scenarioInfo: Record<string, ScenarioInfo>;
 
   // Simulation State
   activeScenario: string;
@@ -60,7 +61,11 @@ interface LabState {
   setScrubberTime: (t: number) => void;
   togglePlay: () => void;
   initApp: () => Promise<void>;
-  runSimulation: (profileName?: string, scenarioName?: string) => Promise<void>;
+  refreshProfiles: () => Promise<Profile[]>;
+  /** Resolves true on success; failures are reported via `error`. */
+  runSimulation: (profileName?: string, scenarioName?: string) => Promise<boolean>;
+  /** Run the active scenario under the saved calendar schedule. */
+  runScheduledSimulation: (scenarioName?: string) => Promise<boolean>;
   stepForward: (delta?: number) => void;
   stepBackward: (delta?: number) => void;
   jumpToNextDeadlock: () => void;
@@ -79,6 +84,38 @@ export const useLabStore = create<LabState>((set, get) => {
   let reconnectTimer: any = null;
   let reconnectAttempts = 0;
 
+  /** Fetch a run, build its replay, and make it the active run. */
+  const loadRun = async (fetchRun: () => Promise<RunResult>, profileName: string | null) => {
+    set({ loading: true, error: null });
+    try {
+      const result = await fetchRun();
+      const { cluster } = get();
+      if (!cluster) return false;
+      const startProfile = result.initial_profile || profileName || result.profile_name;
+      const engine = new ReplayEngine(cluster, result.events || [], startProfile);
+      const maxT = engine.getMaxTime();
+      const initialT = Math.min(12, maxT);
+      if (playInterval) {
+        clearInterval(playInterval);
+        playInterval = null;
+      }
+      set({
+        runResult: result,
+        replayEngine: engine,
+        maxScrubberTime: maxT,
+        scrubberTime: initialT,
+        replayState: engine.getStateAt(initialT),
+        isPlaying: false,
+      });
+      return true;
+    } catch (err: any) {
+      set({ error: err.message || 'Simulation run failed' });
+      return false;
+    } finally {
+      set({ loading: false });
+    }
+  };
+
   return {
     currentTab: 'overview',
     mode: 'simulation',
@@ -88,6 +125,7 @@ export const useLabStore = create<LabState>((set, get) => {
     cluster: null,
     profiles: [],
     scenarios: [],
+    scenarioInfo: {},
 
     activeScenario: 'exam_rush',
     activeProfile: 'practical_session',
@@ -169,33 +207,35 @@ export const useLabStore = create<LabState>((set, get) => {
     initApp: async () => {
       set({ loading: true, error: null });
       try {
-        const [clusterData, profilesData, scenariosData] = await Promise.all([
-          api.getCluster().catch(() => null),
-          api.getProfiles().catch(() => []),
-          api.getScenarios().catch(() => []),
+        const [clusterData, profileList, scenarioData] = await Promise.all([
+          api.getCluster(),
+          api.getProfiles(),
+          api.getScenarios(),
         ]);
 
-        const scenarioList: string[] = Array.isArray(scenariosData) && scenariosData.length > 0
-          ? scenariosData.map((s: any) => (typeof s === 'string' ? s : s.name || 'exam_rush'))
-          : ['exam_rush', 'hackathon_night', 'research_mixed', 'thesis_week', 'node_failure_day', 'balanced_day'];
+        const scenarioList = scenarioData.map((s) => s.name);
+        const info: Record<string, ScenarioInfo> = {};
+        for (const s of scenarioData) info[s.name] = s;
 
-        const profileList = Array.isArray(profilesData) ? profilesData : [];
-        const initProfile = profileList[0]?.name || 'practical_session';
-        const initScenario = scenarioList[0] || 'exam_rush';
+        const { activeProfile, activeScenario } = get();
+        const initProfile = profileList.some((p) => p.name === activeProfile)
+          ? activeProfile
+          : profileList[0]?.name || 'practical_session';
+        const initScenario = scenarioList.includes(activeScenario)
+          ? activeScenario
+          : scenarioList[0] || 'exam_rush';
 
         set({
           cluster: clusterData,
           profiles: profileList,
           scenarios: scenarioList,
+          scenarioInfo: info,
           activeScenario: initScenario,
           activeProfile: initProfile,
         });
 
-        // Run initial simulation
-        await get().runSimulation(initProfile, initScenario);
-
-        // Start Live WebSocket
         get().initLiveWebSocket();
+        await get().runSimulation(initProfile, initScenario);
       } catch (err: any) {
         set({ error: err.message || 'Failed to initialize app' });
       } finally {
@@ -203,43 +243,29 @@ export const useLabStore = create<LabState>((set, get) => {
       }
     },
 
+    refreshProfiles: async () => {
+      const profileList = await api.getProfiles();
+      set({ profiles: profileList });
+      return profileList;
+    },
+
     runSimulation: async (profileName?: string, scenarioName?: string) => {
       const pName = profileName || get().activeProfile;
       const sName = scenarioName || get().activeScenario;
-      const { cluster, seed } = get();
+      set({ activeProfile: pName, activeScenario: sName });
+      return loadRun(
+        () => api.runSimulation({ scenario: sName, profile_name: pName, seed: get().seed, n_jobs: 50 }),
+        pName,
+      );
+    },
 
-      set({ loading: true, error: null, activeProfile: pName, activeScenario: sName });
-      try {
-        const raw = await api.runSimulation({
-          scenario: sName,
-          profile_name: pName,
-          seed,
-          n_jobs: 50,
-        });
-
-        const result: RunResult = Array.isArray(raw) ? raw[0] : raw;
-
-        if (cluster && result) {
-          const events = Array.isArray(result.events) ? result.events : [];
-          const engine = new ReplayEngine(cluster, events, pName);
-          const maxT = engine.getMaxTime();
-          const initialT = Math.min(12, maxT);
-          const initialState = engine.getStateAt(initialT);
-
-          set({
-            runResult: result,
-            replayEngine: engine,
-            maxScrubberTime: maxT,
-            scrubberTime: initialT,
-            replayState: initialState,
-            isPlaying: false,
-          });
-        }
-      } catch (err: any) {
-        set({ error: err.message || 'Simulation run failed' });
-      } finally {
-        set({ loading: false });
-      }
+    runScheduledSimulation: async (scenarioName?: string) => {
+      const sName = scenarioName || get().activeScenario;
+      set({ activeScenario: sName });
+      return loadRun(
+        () => api.runSimulation({ scenario: sName, use_schedule: true, seed: get().seed, n_jobs: 50 }),
+        null,
+      );
     },
 
     toggleCompareProfile: (name: string) => {
