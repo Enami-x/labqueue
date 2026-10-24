@@ -4,34 +4,30 @@ __pycache__/
 *$py.class
 *.so
 .Python
+.venv/
+venv/
 env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
+.eggs/
+/build/
+/backend/build/
 .pytest_cache/
 .coverage
 htmlcov/
 
-# Node
+# Node / frontend build output
 node_modules/
 .npm
 *.log
+/frontend/dist/
 
-# Database
+# Local databases (the backend creates and seeds labqueue.db on startup)
+*.db
 *.db-journal
+*.sqlite3
 
-# OS
+# OS / editors
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/

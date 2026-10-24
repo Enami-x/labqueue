@@ -10,6 +10,10 @@ from pathlib import Path
 # Add backend directory to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# Windows consoles default to cp1252, which can't print the arrows used below.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 from engine.model import DEFAULT_CLUSTER, BankerMode, PlacementKind, Role, SchedulerKind
 from engine.profiles import BASE_PROFILE_MAP, BASE_PROFILES, Profile
 from engine.workloads import generate_workload, workload_from_dict

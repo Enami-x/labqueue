@@ -5,6 +5,7 @@ app/main.py – FastAPI application entry point.
 from __future__ import annotations
 
 import json
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -34,11 +35,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# The Vite dev server proxies /api and /ws, and the built UI is served from this
+# app, so cross-origin access is only needed for other local tools. Override with
+# a comma-separated LABQUEUE_CORS_ORIGINS.
+CORS_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("LABQUEUE_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type"],
 )
 
 # Register routers

@@ -198,3 +198,11 @@ class TestEngineFailureIsReported:
         res = client.post("/api/runs", json={"scenario": "balanced_day", "profile_name": "workshop", "n_jobs": 10})
         assert res.status_code == 500
         assert "simulation engine failed running 'workshop'" in res.json()["detail"]
+
+
+class TestCors:
+    def test_dev_origin_allowed_and_others_not(self, client):
+        ok = client.options("/api/health", headers={"Origin": "http://localhost:5173", "Access-Control-Request-Method": "GET"})
+        assert ok.headers.get("access-control-allow-origin") == "http://localhost:5173"
+        bad = client.get("/api/health", headers={"Origin": "http://evil.example"})
+        assert "access-control-allow-origin" not in bad.headers
