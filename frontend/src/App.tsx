@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useLabStore } from './store/useLabStore';
 import { Navbar } from './components/Navbar';
+import { LandingPage } from './components/LandingPage';
 import { OverviewPage } from './pages/OverviewPage';
 import { ComparePage } from './pages/ComparePage';
 import { ProfileExplorerPage } from './pages/ProfileExplorerPage';
@@ -27,19 +28,30 @@ const PAGES: Record<TabKey, { label: string; component: React.FC }> = {
 };
 
 export const App: React.FC = () => {
-  const { currentTab, initApp, loading, error, setTab } = useLabStore();
+  const { currentTab, initApp, loading, error, setTab, showLanding } = useLabStore();
+
+  const enterDashboard = () => {
+    sessionStorage.setItem('labqueue_entered', '1');
+    useLabStore.setState({ showLanding: false });
+    initApp();
+  };
 
   useEffect(() => {
+    if (showLanding) return; // defer app setup until user enters
     initApp();
-    // Back/forward and manual hash edits switch tabs without pushing history.
     const onHash = () => {
       const tab = tabFromHash();
       if (tab && tab !== useLabStore.getState().currentTab) setTab(tab, true);
     };
-    if (!window.location.hash) window.history.replaceState(null, '', `#/${useLabStore.getState().currentTab}`);
+    if (!window.location.hash)
+      window.history.replaceState(null, '', `#/${useLabStore.getState().currentTab}`);
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
-  }, []);
+  }, [showLanding]);
+
+  if (showLanding) {
+    return <LandingPage onOpenDashboard={enterDashboard} />;
+  }
 
   return (
     <div className="lab-app flex flex-col text-[#f5f4ed]">
@@ -59,7 +71,10 @@ export const App: React.FC = () => {
 
       <main className="flex-1 flex flex-col relative" id="main">
         {loading && (
-          <div className="fixed bottom-5 left-5 z-50 flex items-center gap-2 bg-[#062b25]/90 backdrop-blur-md border border-[rgba(220,237,227,0.2)] px-4 py-1.5 rounded-full text-xs font-semibold text-[#b6f3cf] shadow-2xl" role="status">
+          <div
+            className="fixed bottom-5 left-5 z-50 flex items-center gap-2 bg-[#062b25]/90 backdrop-blur-md border border-[rgba(220,237,227,0.2)] px-4 py-1.5 rounded-full text-xs font-semibold text-[#b6f3cf] shadow-2xl"
+            role="status"
+          >
             <Loader2 className="w-3.5 h-3.5 spinner" aria-hidden="true" />
             <span>Simulating…</span>
           </div>

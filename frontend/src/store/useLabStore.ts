@@ -34,6 +34,7 @@ export type TabKey =
   | 'analytics';
 
 interface LabState {
+  showLanding: boolean;
   currentTab: TabKey;
   mode: 'simulation' | 'live';
   loading: boolean;
@@ -104,6 +105,9 @@ interface LabState {
 
   // Live WebSocket
   initLiveWebSocket: () => void;
+
+  /** Navigate back to the landing page. */
+  goToLanding: () => void;
 }
 
 export const useLabStore = create<LabState>((set, get) => {
@@ -145,6 +149,7 @@ export const useLabStore = create<LabState>((set, get) => {
   };
 
   return {
+    showLanding: sessionStorage.getItem('labqueue_entered') !== '1',
     currentTab: tabFromHash() ?? 'overview',
     mode: tabFromHash() === 'live' ? 'live' : 'simulation',
     loading: false,
@@ -186,6 +191,11 @@ export const useLabStore = create<LabState>((set, get) => {
     setMode: (mode) => set({ mode }),
     setSelectedJobId: (jid) => set({ selectedJobId: jid }),
     setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
+
+    goToLanding: () => {
+      sessionStorage.removeItem('labqueue_entered');
+      set({ showLanding: true });
+    },
 
     setScrubberTime: (t) => {
       const { replayEngine, maxScrubberTime } = get();

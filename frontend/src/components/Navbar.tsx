@@ -54,7 +54,7 @@ const NavItems: React.FC<{ onPick?: () => void }> = ({ onPick }) => {
 };
 
 export const Navbar: React.FC = () => {
-  const { setTab, mode, setMode, liveLink, liveState } = useLabStore();
+  const { setTab, mode, setMode, liveLink, liveState, goToLanding } = useLabStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const statusRef = useRef<HTMLDivElement>(null);
@@ -102,7 +102,7 @@ export const Navbar: React.FC = () => {
         >
           <Menu />
         </button>
-        <button className="brand" onClick={() => setTab('overview')} aria-label="LabQueue home (Overview)">
+        <button className="brand" onClick={goToLanding} aria-label="LabQueue — back to home">
           <span className="brand-mark">
             <Workflow aria-hidden="true" />
           </span>
